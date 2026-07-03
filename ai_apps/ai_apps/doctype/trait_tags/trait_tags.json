@@ -1,0 +1,77 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:trait_name",
+ "creation": "2026-06-16 16:09:22.038200",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "trait_name",
+  "trait_type",
+  "tag_type",
+  "parent_trait"
+ ],
+ "fields": [
+  {
+   "fieldname": "trait_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Main Trait Name",
+   "unique": 1
+  },
+  {
+   "fieldname": "trait_type",
+   "fieldtype": "Select",
+   "in_filter": 1,
+   "in_global_search": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Trait Type",
+   "options": "Communication\nBehavioral\nExperience\nProfessional Readiness\nAI Flag"
+  },
+  {
+   "fieldname": "tag_type",
+   "fieldtype": "Select",
+   "in_filter": 1,
+   "in_global_search": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Tag Type",
+   "options": "Main\nSub"
+  },
+  {
+   "fieldname": "parent_trait",
+   "fieldtype": "Link",
+   "label": "Parent Trait",
+   "options": "Trait Tags"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-06-17 18:03:42.047732",
+ "modified_by": "Administrator",
+ "module": "Ai Apps",
+ "name": "Trait Tags",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

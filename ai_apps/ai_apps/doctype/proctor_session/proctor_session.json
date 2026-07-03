@@ -1,0 +1,131 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-05-22 11:34:55.921369",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "entity_id",
+  "entity_type",
+  "user_id",
+  "user_name",
+  "user_email",
+  "started_at",
+  "ended_at",
+  "status",
+  "trust_score",
+  "risk_level",
+  "total_events",
+  "critical_events",
+  "total_penalty_points",
+  "review_required",
+  "terminated_reason"
+ ],
+ "fields": [
+  {
+   "fieldname": "entity_id",
+   "fieldtype": "Data",
+   "label": "Entity ID"
+  },
+  {
+   "fieldname": "entity_type",
+   "fieldtype": "Data",
+   "label": "Entity Type"
+  },
+  {
+   "fieldname": "user_id",
+   "fieldtype": "Data",
+   "label": "User ID"
+  },
+  {
+   "fieldname": "user_name",
+   "fieldtype": "Data",
+   "label": "User Name"
+  },
+  {
+   "fieldname": "user_email",
+   "fieldtype": "Data",
+   "label": "User Email"
+  },
+  {
+   "fieldname": "started_at",
+   "fieldtype": "Datetime",
+   "label": "Started At"
+  },
+  {
+   "fieldname": "ended_at",
+   "fieldtype": "Datetime",
+   "label": "Ended At"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "STARTED\nACTIVE\nPAUSED\nENDED\nTERMINATED\nFAILED\nREVIEW_REQUIRED\nARCHIVED"
+  },
+  {
+   "fieldname": "trust_score",
+   "fieldtype": "Float",
+   "label": "Trust Score"
+  },
+  {
+   "fieldname": "risk_level",
+   "fieldtype": "Select",
+   "label": "Risk Level",
+   "options": "LOW\nMEDIUM\nHIGH\nCRITICAL"
+  },
+  {
+   "fieldname": "total_events",
+   "fieldtype": "Int",
+   "label": "Total Events"
+  },
+  {
+   "fieldname": "critical_events",
+   "fieldtype": "Int",
+   "label": "Critical Events"
+  },
+  {
+   "fieldname": "total_penalty_points",
+   "fieldtype": "Int",
+   "label": "Total Penalty Points"
+  },
+  {
+   "default": "0",
+   "fieldname": "review_required",
+   "fieldtype": "Check",
+   "label": "Review Required"
+  },
+  {
+   "fieldname": "terminated_reason",
+   "fieldtype": "Small Text",
+   "label": "Terminated Reason"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-05-22 11:57:53.043685",
+ "modified_by": "Administrator",
+ "module": "Ai Apps",
+ "name": "Proctor Session",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

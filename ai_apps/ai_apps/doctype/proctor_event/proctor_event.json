@@ -1,0 +1,53 @@
+{
+ "actions": [],
+ "autoname": "autoincrement",
+ "creation": "2026-05-23 13:53:02.143244",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "session",
+  "proctor_session_event"
+ ],
+ "fields": [
+  {
+   "fieldname": "session",
+   "fieldtype": "Link",
+   "label": "Session",
+   "options": "Proctor Session",
+   "unique": 1
+  },
+  {
+   "fieldname": "proctor_session_event",
+   "fieldtype": "Table",
+   "label": "Proctor Session Event",
+   "options": "Proctor Session Event"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-05-23 14:03:41.581839",
+ "modified_by": "Administrator",
+ "module": "Ai Apps",
+ "name": "Proctor Event",
+ "naming_rule": "Autoincrement",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

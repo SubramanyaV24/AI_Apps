@@ -127,6 +127,17 @@ app_license = "MIT"
 # Scheduled Tasks
 # ---------------
 
+scheduler_events = {
+    "daily": [
+        "ai_apps.api.proctor_api.delete_old_evidence.delete_expired_evidence"
+    ],
+    "cron": {
+        "0 23 * * *": [
+            "ai_apps.ai_screening.frappe_integration.daily_ai_screening_batch"
+        ]
+    }
+}
+
 # scheduler_events = {
 # 	"all": [
 # 		"ai_apps.tasks.all"
@@ -153,9 +164,9 @@ app_license = "MIT"
 # Overriding Methods
 # ------------------------------
 #
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "ai_apps.event.get_events"
-# }
+override_whitelisted_methods = {
+    "ai_apps.api.proctor_api.evidence.store_evidence": "ai_apps.api.proctor_api.evidence.store_evidence"
+}
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,

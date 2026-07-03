@@ -1,0 +1,120 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:rule_name",
+ "creation": "2026-05-22 11:14:32.075669",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "rule_id",
+  "rule_name",
+  "column_break_jafnr",
+  "enabled",
+  "condition_type",
+  "section_break_djizn",
+  "threshold_ms",
+  "window_ms",
+  "cooldown_ms",
+  "severity",
+  "penalty_points",
+  "count",
+  "pattern_expression"
+ ],
+ "fields": [
+  {
+   "fieldname": "rule_id",
+   "fieldtype": "Data",
+   "label": "Rule Id"
+  },
+  {
+   "fieldname": "rule_name",
+   "fieldtype": "Data",
+   "label": "Rule Name",
+   "unique": 1
+  },
+  {
+   "fieldname": "column_break_jafnr",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "condition_type",
+   "fieldtype": "Select",
+   "label": "Condition Type",
+   "options": "Select an option\nthreshold\nduration\nfrequency\npattern"
+  },
+  {
+   "fieldname": "section_break_djizn",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "threshold_ms",
+   "fieldtype": "Int",
+   "label": "Threshold MS"
+  },
+  {
+   "fieldname": "window_ms",
+   "fieldtype": "Int",
+   "label": "Window MS"
+  },
+  {
+   "fieldname": "cooldown_ms",
+   "fieldtype": "Int",
+   "label": "Cooldown MS"
+  },
+  {
+   "fieldname": "severity",
+   "fieldtype": "Select",
+   "label": "Severity",
+   "options": "Select an option\nLOW\nMEDIUM\nHIGH\nCRITICAL"
+  },
+  {
+   "fieldname": "penalty_points",
+   "fieldtype": "Int",
+   "label": "Penalty Points"
+  },
+  {
+   "fieldname": "count",
+   "fieldtype": "Data",
+   "label": "count"
+  },
+  {
+   "fieldname": "pattern_expression",
+   "fieldtype": "Data",
+   "label": "Pattern Expression"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-02 14:35:44.298598",
+ "modified_by": "Administrator",
+ "module": "Ai Apps",
+ "name": "Proctor Rule",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

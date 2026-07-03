@@ -1,0 +1,31 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-05-21 11:54:13.922778",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "communication_traits"
+ ],
+ "fields": [
+  {
+   "fieldname": "communication_traits",
+   "fieldtype": "Link",
+   "label": "Communication Assessment",
+   "options": "Trait Tags"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-06-16 16:09:58.729591",
+ "modified_by": "Administrator",
+ "module": "Ai Apps",
+ "name": "Communication Traits Child",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

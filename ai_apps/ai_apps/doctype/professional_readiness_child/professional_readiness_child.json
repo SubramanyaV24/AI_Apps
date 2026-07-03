@@ -1,0 +1,31 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-05-22 10:57:48.007471",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "professional_readiness"
+ ],
+ "fields": [
+  {
+   "fieldname": "professional_readiness",
+   "fieldtype": "Link",
+   "label": "Professional Readiness",
+   "options": "Trait Tags"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-06-16 19:42:57.969124",
+ "modified_by": "Administrator",
+ "module": "Ai Apps",
+ "name": "Professional Readiness Child",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

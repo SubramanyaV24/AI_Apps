@@ -1,0 +1,121 @@
+/* App.css - Premium Animations & Visual Effects */
+
+@keyframes mic-pulse-green {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+@keyframes mic-pulse-red {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
+  }
+  50% {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 12px rgba(239, 68, 68, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.mic-pulse-green {
+  animation: mic-pulse-green 1.5s infinite ease-in-out;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+}
+
+.mic-pulse-red {
+  animation: mic-pulse-red 0.8s infinite ease-in-out;
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.6);
+}
+
+/* Sound/Voice Activity Waveform */
+.voice-wave-container {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+  width: 24px;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
+.voice-wave-bar {
+  width: 3px;
+  height: 100%;
+  background-color: #10b981;
+  border-radius: 2px;
+  transform-origin: bottom;
+  animation: voice-bar-bounce 1s ease-in-out infinite alternate;
+}
+
+.voice-wave-bar:nth-child(1) { animation-delay: 0.1s; height: 30%; }
+.voice-wave-bar:nth-child(2) { animation-delay: 0.3s; height: 70%; }
+.voice-wave-bar:nth-child(3) { animation-delay: 0.2s; height: 50%; }
+.voice-wave-bar:nth-child(4) { animation-delay: 0.4s; height: 90%; }
+.voice-wave-bar:nth-child(5) { animation-delay: 0.15s; height: 40%; }
+
+@keyframes voice-bar-bounce {
+  0% {
+    transform: scaleY(0.2);
+  }
+  100% {
+    transform: scaleY(1);
+  }
+}
+
+/* Sound Wave Red Alert state */
+.voice-wave-container.violation .voice-wave-bar {
+  background-color: #ef4444;
+  animation: voice-bar-bounce 0.4s ease-in-out infinite alternate;
+}
+
+/* Gaze Assist Guide Overlay (Premium UI Element) */
+.gaze-guide-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 140px;
+  height: 140px;
+  border: 2px dashed rgba(255, 255, 255, 0.4);
+  border-radius: 50%;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  z-index: 10;
+}
+
+.gaze-guide-overlay.gaze-locked {
+  border-color: #10b981;
+  border-style: solid;
+  background: rgba(16, 185, 129, 0.05);
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+.gaze-guide-overlay::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  transition: all 0.3s ease;
+}
+
+.gaze-guide-overlay.gaze-locked::before {
+  background: #10b981;
+  transform: scale(1.2);
+}

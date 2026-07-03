@@ -1,0 +1,4 @@
+/* TrustScoreCircle.css */
+.trust-score-fg {
+  transition: stroke-dashoffset 0.6s ease, stroke 0.4s ease;
+}

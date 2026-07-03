@@ -1,0 +1,93 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-05-22 12:09:10.590090",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "session",
+  "event",
+  "evidence_type",
+  "sharepoint_url",
+  "thumbnail_url",
+  "captured_at",
+  "duration_seconds",
+  "retention_until",
+  "metadata"
+ ],
+ "fields": [
+  {
+   "fieldname": "session",
+   "fieldtype": "Link",
+   "label": "Session",
+   "options": "Proctor Session"
+  },
+  {
+   "fieldname": "event",
+   "fieldtype": "Link",
+   "label": "Event",
+   "options": "Proctor Session Event"
+  },
+  {
+   "fieldname": "evidence_type",
+   "fieldtype": "Data",
+   "label": "Evidence Type"
+  },
+  {
+   "fieldname": "sharepoint_url",
+   "fieldtype": "Small Text",
+   "label": "Sharepoint URL"
+  },
+  {
+   "fieldname": "thumbnail_url",
+   "fieldtype": "Small Text",
+   "label": "Thumbnail URL"
+  },
+  {
+   "fieldname": "captured_at",
+   "fieldtype": "Datetime",
+   "label": "Captured At"
+  },
+  {
+   "fieldname": "duration_seconds",
+   "fieldtype": "Float",
+   "label": "Duration Seconds"
+  },
+  {
+   "fieldname": "retention_until",
+   "fieldtype": "Date",
+   "label": "Retention Until"
+  },
+  {
+   "fieldname": "metadata",
+   "fieldtype": "JSON",
+   "label": "Metadata"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-05-23 13:52:15.021568",
+ "modified_by": "Administrator",
+ "module": "Ai Apps",
+ "name": "Proctor Evidence",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
