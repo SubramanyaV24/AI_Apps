@@ -29,7 +29,7 @@ def _get_or_create_session(session_id: str | None = None):
     return session_id
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def evaluate_event(**kwargs):
     """Endpoint called by the ML server to evaluate a single detection event.
 

@@ -9,7 +9,7 @@ import { SummaryMetricsRow } from './components/dashboard/SummaryMetricsRow';
 import { SessionTimeline } from './components/dashboard/SessionTimeline';
 import { SystemAnalysisOverview } from './components/dashboard/SystemAnalysisOverview';
 import { countEventsBySeverity } from './lib/eventSeverity';
-import { getEvidenceProxyUrl, isSharePointUrl, resolveEvidenceUrl } from './lib/evidenceUtils';
+import { getEvidenceProxyUrl, isSharePointUrl, resolveEvidenceUrl, resolveProfilePhotoUrl } from './lib/evidenceUtils';
 import {
   buildReportPayload,
   downloadSessionReportCSV,
@@ -290,8 +290,10 @@ export default function App() {
 
       evidenceList.forEach((ev) => {
         const url = getEvidenceProxyUrl(ev.name) || resolveEvidenceUrl(ev.thumbnail_url || ev.sharepoint_url);
+        const originalUrl = ev.original_sharepoint_url || ev.sharepoint_url;
         const entry = {
           url,
+          originalUrl,
           evidenceId: ev.name,
           evidenceType: ev.evidence_type,
           capturedAt: ev.captured_at || ev.creation,
@@ -329,9 +331,11 @@ export default function App() {
             } catch (_) { /* ignore */ }
           }
 
+          let originalEvidenceUrl = null;
           const linked = evidenceByEventId[e.name];
           if (linked?.url) {
             evidenceUrl = linked.url;
+            originalEvidenceUrl = linked.originalUrl;
             evidenceType = linked.evidenceType || evidenceType;
           } else if (!evidenceUrl && orphanEvidence.length > 0) {
             const vt = (e.event_type || '').toUpperCase();
@@ -339,13 +343,27 @@ export default function App() {
             // so they must never receive a screenshot from the orphan pool.
             const BROWSER_ONLY_EVENTS = new Set(['TAB_SWITCHED', 'SPLIT_SCREEN']);
             if (!BROWSER_ONLY_EVENTS.has(vt)) {
-              const idx = orphanEvidence.findIndex((o) => {
-                if (vt === 'AUDIO_VAD' || vt === 'NOISE') return o.evidenceType === 'audio';
-                return o.evidenceType === 'screenshot' || o.evidenceType === 'image';
+              const eventTime = new Date(e.occurred_at || e.creation).getTime();
+              let bestIdx = -1;
+              let bestDiff = Infinity;
+              orphanEvidence.forEach((o, idx) => {
+                // Filter by evidence type compatibility
+                if (vt === 'AUDIO_VAD' || vt === 'NOISE') {
+                  if (o.evidenceType !== 'audio') return;
+                } else {
+                  if (!(o.evidenceType === 'screenshot' || o.evidenceType === 'image')) return;
+                }
+                const oTime = new Date(o.capturedAt || o.creation).getTime();
+                const diff = Math.abs(eventTime - oTime);
+                if (diff < bestDiff) {
+                  bestDiff = diff;
+                  bestIdx = idx;
+                }
               });
-              const pick = idx >= 0 ? orphanEvidence.splice(idx, 1)[0] : null;
-              if (pick) {
+              if (bestIdx >= 0) {
+                const pick = orphanEvidence.splice(bestIdx, 1)[0];
                 evidenceUrl = pick.url;
+                originalEvidenceUrl = pick.originalUrl;
                 evidenceType = pick.evidenceType;
               }
             }
@@ -363,6 +381,7 @@ export default function App() {
               : new Date(e.creation).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
             timestamp: e.occurred_at || e.creation,
             evidence: evidenceUrl,
+            report_evidence: originalEvidenceUrl || evidenceUrl,
             evidenceType,
           };
         });
@@ -387,24 +406,8 @@ export default function App() {
       });
       setCounters(newCounters);
 
-      // Profile photo: only use a face-capture from the SESSION_START event.
-      // Using the latest violation screenshot (e.g. a blurry monitor photo) as the
-      // candidate avatar was causing wrong images to appear in the header.
-      const faceCapture = rawEvents.find(
-        (ev) => ev.event_type === 'SESSION_START' && evidenceByEventId[ev.name]?.url
-      );
-      if (faceCapture) {
-        setRemoteScreenshot(evidenceByEventId[faceCapture.name].url);
-      } else {
-        // Fallback: the first linked screenshot that is NOT from a browser-only event.
-        const BROWSER_ONLY_EVENTS = new Set(['TAB_SWITCHED', 'SPLIT_SCREEN']);
-        const firstFace = rawEvents.find(
-          (ev) =>
-            !BROWSER_ONLY_EVENTS.has(ev.event_type) &&
-            evidenceByEventId[ev.name]?.url
-        );
-        setRemoteScreenshot(firstFace ? evidenceByEventId[firstFace.name].url : null);
-      }
+      // Profile photo: only use the face-capture from the SESSION_START event.
+      setRemoteScreenshot(resolveProfilePhotoUrl(rawEvents, evidenceByEventId, evidenceList));
     } catch (err) {
       console.error("Error polling session details:", err);
       stopMonitoring();

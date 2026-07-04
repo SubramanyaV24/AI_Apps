@@ -8,8 +8,7 @@ _logger = get_logger(__name__)
 # -------------------------------------------------
 # Proctor Event CRUD API
 # -------------------------------------------------
-#change
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def create_event(**kwargs):
     """Create a new Proctor Event document."""
     try:
@@ -53,6 +52,7 @@ def create_event(**kwargs):
 
     # PRE-UPLOAD EVIDENCE BEFORE LOCKING PARENT
     evidence_data = payload.get("evidence") or metadata_dict.get("evidence")
+    evidence_doc_name = None
     if evidence_data and not str(evidence_data).startswith("http"):
         try:
             from ai_apps.api.proctor_api.evidence import store_evidence
@@ -64,6 +64,7 @@ def create_event(**kwargs):
             if res and res.get("url"):
                 metadata_dict["evidence"] = res["url"]
                 metadata_dict["evidence_sharepoint_path"] = res.get("filename")
+                evidence_doc_name = res.get("evidence_id")
                 payload["evidence"] = None  # Remove massive base64 to keep DB light
         except Exception as e:
             frappe.log_error(title="Failed to pre-upload evidence in create_event", message=str(e))
@@ -109,9 +110,20 @@ def create_event(**kwargs):
                 if metadata_dict:
                     child_data["metadata"] = frappe.as_json(metadata_dict)
 
-                doc.append("proctor_session_event", child_data)
+                child_row = doc.append("proctor_session_event", child_data)
                 doc.save(ignore_permissions=True)
-                return {"success": True, "name": doc.name}
+
+                # Link uploaded evidence to this child event row for dashboard lookups
+                if evidence_doc_name and child_row.name:
+                    frappe.db.set_value(
+                        "Proctor Evidence",
+                        evidence_doc_name,
+                        "event",
+                        child_row.name,
+                        update_modified=False,
+                    )
+
+                return {"success": True, "name": doc.name, "event_id": child_row.name}
             finally:
                 frappe.db.sql("SELECT RELEASE_LOCK(%s)", lock_name)
 

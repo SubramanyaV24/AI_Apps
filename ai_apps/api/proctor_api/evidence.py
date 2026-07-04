@@ -84,6 +84,8 @@ def process_evidence(doc):
             
             if upload_result and upload_result.get("success"):
                 web_url = upload_result.get("web_url")
+                if web_url and "sharepoint.com" in web_url and "?" not in web_url:
+                    web_url += "?web=1"
                 download_url = upload_result.get("download_url") or web_url
                 
                 # Create Proctor Evidence document
@@ -265,7 +267,7 @@ def _ensure_folder(client: dict, full_folder_path: str) -> None:
                 )
         except Exception as e:
             frappe.logger().error(f"_ensure_folder error at '{partial_path}': {e}")
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def store_evidence(**kwargs):
     """
     Directly upload a Base64‑encoded evidence blob (image or audio) to SharePoint.
@@ -275,6 +277,7 @@ def store_evidence(**kwargs):
     session_id = payload.get('session')
     violation_type = payload.get('violation_type')
     evidence_data = payload.get('evidence')
+    event_name = payload.get('event')
 
     if not session_id:
         frappe.throw("Missing required field 'session' for evidence upload")
@@ -307,6 +310,8 @@ def store_evidence(**kwargs):
         frappe.throw(f"SharePoint upload failed: {upload_res.get('error')}")
 
     web_url = upload_res.get('web_url')
+    if web_url and "sharepoint.com" in web_url and "?" not in web_url:
+        web_url += "?web=1"
     download_url = upload_res.get('download_url') or web_url
 
     evidence_type_cat = "screenshot" if "image" in mime_type else "audio" if "audio" in mime_type else "other"
@@ -315,6 +320,7 @@ def store_evidence(**kwargs):
 
     evidence_doc = frappe.new_doc("Proctor Evidence")
     evidence_doc.session = session_id
+    evidence_doc.event = event_name
     evidence_doc.evidence_type = evidence_type_cat
     evidence_doc.sharepoint_url = web_url
     evidence_doc.thumbnail_url = download_url if evidence_type_cat == "screenshot" else None
@@ -333,4 +339,4 @@ def store_evidence(**kwargs):
     evidence_doc.insert(ignore_permissions=True)
     frappe.db.commit()
 
-    return {'url': web_url, 'filename': filename}
+    return {'url': web_url, 'filename': filename, 'evidence_id': evidence_doc.name}

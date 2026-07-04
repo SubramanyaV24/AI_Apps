@@ -80,7 +80,8 @@ export function downloadSessionReportCSV(report) {
   meta.forEach((row) => rows.push(row.map(escapeCsvCell).join(',')))
 
   events.forEach((evt, idx) => {
-    const evidence = evt.evidence ? resolveEvidenceUrl(evt.evidence) : ''
+    const evidenceRaw = evt.report_evidence || evt.evidence
+    const evidence = evidenceRaw ? (evidenceRaw.includes('sharepoint.com') ? evidenceRaw : resolveEvidenceUrl(evidenceRaw)) : ''
     rows.push(
       [
         idx + 1,
@@ -206,7 +207,8 @@ export function downloadSessionReportPDF(report) {
       const severity = getEventSeverity(evt.violationType || evt.type).toUpperCase()
       const time = evt.occurredAt || '—'
       const msgLines = wrapText(pdf, evt.message || '—', contentW)
-      const evidence = evt.evidence ? resolveEvidenceUrl(evt.evidence) : null
+      const evidenceRaw = evt.report_evidence || evt.evidence
+      const evidence = evidenceRaw ? (evidenceRaw.includes('sharepoint.com') ? evidenceRaw : resolveEvidenceUrl(evidenceRaw)) : null
       const evidenceLines = evidence ? wrapText(pdf, evidence, contentW - 8) : []
 
       const blockH = 8 + msgLines.length * lineH + (evidence ? 5 + evidenceLines.length * lineH : 0)

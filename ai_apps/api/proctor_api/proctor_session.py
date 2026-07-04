@@ -300,7 +300,7 @@ def get_session_details(session_id: str):
     evidence = frappe.get_all(
         "Proctor Evidence",
         filters={"session": session_id},
-        fields=["name", "evidence_type", "sharepoint_url", "thumbnail_url", "captured_at", "metadata"],
+        fields=["name", "event", "evidence_type", "sharepoint_url", "thumbnail_url", "captured_at", "metadata"],
         order_by="captured_at asc",
     )
     # Map evidence URLs to dynamic proxy endpoint to prevent token expiration & allow browser media streaming
@@ -317,6 +317,12 @@ def get_session_details(session_id: str):
     for ev in evidence:
         proxy_url = f"/api/method/ai_apps.api.proctor_api.proctor_session.get_evidence_file?evidence_id={ev['name']}"
         absolute_proxy_url = host_url + proxy_url
+        
+        orig_sp_url = ev.get("sharepoint_url")
+        if orig_sp_url and "sharepoint.com" in orig_sp_url and "?" not in orig_sp_url:
+            orig_sp_url += "?web=1"
+            
+        ev["original_sharepoint_url"] = orig_sp_url
         ev["sharepoint_url"] = absolute_proxy_url
         if ev.get("evidence_type") == "screenshot":
             ev["thumbnail_url"] = absolute_proxy_url

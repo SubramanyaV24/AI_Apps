@@ -122,6 +122,48 @@ export function normalizeAudioDataUri(evidence) {
   return resolved
 }
 
+/** Resolve the one-time candidate profile photo from SESSION_START evidence. */
+export function resolveProfilePhotoUrl(rawEvents, evidenceByEventId, evidenceList = []) {
+  const sessionStarts = (rawEvents || []).filter((ev) => ev.event_type === 'SESSION_START')
+
+  for (const ev of sessionStarts) {
+    const linked = evidenceByEventId[ev.name]?.url
+    if (linked) return linked
+
+    const evidenceRow = (evidenceList || []).find((row) => row.event === ev.name)
+    if (evidenceRow?.name) {
+      const proxy = getEvidenceProxyUrl(evidenceRow.name)
+      if (proxy) return proxy
+    }
+
+    if (ev.metadata) {
+      try {
+        const meta = JSON.parse(ev.metadata)
+        if (meta.evidence && !isSharePointUrl(meta.evidence)) {
+          const url = resolveEvidenceUrl(meta.evidence)
+          if (url) return url
+        }
+      } catch (_) { /* ignore malformed metadata */ }
+    }
+  }
+
+  // Legacy uploads: evidence stored without event link (filename prefix SESSION_START_)
+  const legacyProfile = (evidenceList || []).find((row) => {
+    if (row.evidence_type !== 'screenshot') return false
+    try {
+      const meta = JSON.parse(row.metadata || '{}')
+      return String(meta.filename || '').startsWith('SESSION_START_')
+    } catch {
+      return false
+    }
+  })
+  if (legacyProfile?.name) {
+    return getEvidenceProxyUrl(legacyProfile.name)
+  }
+
+  return null
+}
+
 /**
  * Resolve a URL the browser <audio> element can play (data URI or blob URL).
  * Caller must revoke blob URLs when done.
