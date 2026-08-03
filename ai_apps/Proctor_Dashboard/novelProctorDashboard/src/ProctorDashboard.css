@@ -119,3 +119,58 @@
   background: #10b981;
   transform: scale(1.2);
 }
+
+/* ── Custom Premium Date Picker Styling ── */
+
+/* Add a smooth transition to the entire input */
+input[type="date"] {
+  transition: all 0.3s ease;
+}
+
+/* Style the native calendar icon */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.5;
+  transition: all 0.2s ease;
+  padding: 4px;
+  border-radius: 6px;
+  /* Slightly tint the icon to match a premium dark theme */
+  filter: invert(0.8) sepia(0.2) hue-rotate(180deg) saturate(150%);
+}
+
+/* Interactive hover state for the calendar icon */
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  background-color: rgba(255, 255, 255, 0.1);
+  transform: scale(1.05);
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:active {
+  transform: scale(0.95);
+}
+
+/* Polished typography and spacing for the date fields */
+input[type="date"]::-webkit-datetime-edit {
+  padding: 2px 0;
+  letter-spacing: 0.5px;
+}
+
+input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+  color: #f3f4f6;
+}
+
+input[type="date"]::-webkit-datetime-edit-text {
+  color: #6b7280;
+  padding: 0 0.3em;
+}
+
+/* Premium highlight when selecting day/month/year */
+input[type="date"]::-webkit-datetime-edit-month-field:focus,
+input[type="date"]::-webkit-datetime-edit-day-field:focus,
+input[type="date"]::-webkit-datetime-edit-year-field:focus {
+  background-color: rgba(59, 130, 246, 0.25); /* Tailwind blue-500 with opacity */
+  color: #60a5fa; /* Tailwind blue-400 */
+  border-radius: 4px;
+  outline: none;
+}
+

@@ -12,15 +12,18 @@
   "rule_name",
   "column_break_jafnr",
   "enabled",
-  "condition_type",
   "section_break_djizn",
-  "threshold_ms",
-  "window_ms",
   "cooldown_ms",
-  "severity",
-  "penalty_points",
-  "count",
-  "pattern_expression"
+  "pattern_expression",
+  "section_break_new_engine",
+  "severity_tier",
+  "threshold_type",
+  "duration_ms",
+  "column_break_freq",
+  "frequency_count",
+  "frequency_window_ms",
+  "reset_on_clear",
+  "correlation_window_ms"
  ],
  "fields": [
   {
@@ -45,24 +48,8 @@
    "label": "Enabled"
   },
   {
-   "fieldname": "condition_type",
-   "fieldtype": "Select",
-   "label": "Condition Type",
-   "options": "Select an option\nthreshold\nduration\nfrequency\npattern"
-  },
-  {
    "fieldname": "section_break_djizn",
    "fieldtype": "Section Break"
-  },
-  {
-   "fieldname": "threshold_ms",
-   "fieldtype": "Int",
-   "label": "Threshold MS"
-  },
-  {
-   "fieldname": "window_ms",
-   "fieldtype": "Int",
-   "label": "Window MS"
   },
   {
    "fieldname": "cooldown_ms",
@@ -70,30 +57,71 @@
    "label": "Cooldown MS"
   },
   {
-   "fieldname": "severity",
-   "fieldtype": "Select",
-   "label": "Severity",
-   "options": "Select an option\nLOW\nMEDIUM\nHIGH\nCRITICAL"
-  },
-  {
-   "fieldname": "penalty_points",
-   "fieldtype": "Int",
-   "label": "Penalty Points"
-  },
-  {
-   "fieldname": "count",
-   "fieldtype": "Data",
-   "label": "count"
-  },
-  {
    "fieldname": "pattern_expression",
    "fieldtype": "Data",
    "label": "Pattern Expression"
+  },
+  {
+   "fieldname": "section_break_new_engine",
+   "fieldtype": "Section Break",
+   "label": "Severity Engine (New)"
+  },
+  {
+   "description": "Input severity tier used by the severity engine to set the anchor value. Maps to anchor values: Low=20, Medium=45, High=70, Critical=95",
+   "fieldname": "severity_tier",
+   "fieldtype": "Select",
+   "label": "Severity Tier",
+   "options": "Select an option\nLow\nMedium\nHigh\nCritical"
+  },
+  {
+   "description": "How raw ML signals are gated before reaching the severity engine",
+   "fieldname": "threshold_type",
+   "fieldtype": "Select",
+   "label": "Threshold Type",
+   "options": "Select an option\nInstant\nDuration\nFrequency"
+  },
+  {
+   "depends_on": "eval:doc.threshold_type == 'Duration'",
+   "description": "Cumulative ms of signal that must accumulate before firing a violation",
+   "fieldname": "duration_ms",
+   "fieldtype": "Int",
+   "label": "Duration Threshold (ms)"
+  },
+  {
+   "fieldname": "column_break_freq",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.threshold_type == 'Frequency'",
+   "description": "Number of occurrences within the window required to fire",
+   "fieldname": "frequency_count",
+   "fieldtype": "Int",
+   "label": "Frequency Count"
+  },
+  {
+   "depends_on": "eval:doc.threshold_type == 'Frequency'",
+   "description": "Sliding window duration for frequency counting",
+   "fieldname": "frequency_window_ms",
+   "fieldtype": "Int",
+   "label": "Frequency Window (ms)"
+  },
+  {
+   "default": "1",
+   "description": "If unchecked, the duration/frequency accumulator persists after a violation fires (cumulative mode). Set false for lookingAway.",
+   "fieldname": "reset_on_clear",
+   "fieldtype": "Check",
+   "label": "Reset Accumulator on Clear"
+  },
+  {
+   "description": "Time window within which co-occurring violations earn a correlation bonus",
+   "fieldname": "correlation_window_ms",
+   "fieldtype": "Int",
+   "label": "Correlation Window (ms)"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-02 14:35:44.298598",
+ "modified": "2026-07-24 17:48:02.235272",
  "modified_by": "Administrator",
  "module": "Ai Apps",
  "name": "Proctor Rule",

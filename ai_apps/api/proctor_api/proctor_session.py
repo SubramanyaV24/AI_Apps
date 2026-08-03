@@ -126,7 +126,6 @@ def sync_session_metrics(session_id: str):
     parent_name = frappe.db.get_value("Proctor Event", {"session": session_id}, "name")
     total_events = 0
     critical_events = 0
-    total_penalty_points = 0
     review_required = 0
 
     if parent_name:
@@ -138,37 +137,48 @@ def sync_session_metrics(session_id: str):
         # Count actual violations (exclude start and end markers)
         violations = [e for e in events_data if e.get("event_type") not in ("SESSION_START", "SESSION_END")]
         total_events = len(violations)
-        total_penalty_points = sum(e.get("penalty_points") or 0 for e in violations)
         critical_events = sum(1 for e in violations if e.get("severity") == "HIGH")
 
-    # 2. Determine trust score, risk band, and escalation state
-    engine = RuleEngine()
-    engine_score = engine.get_current_score(session_id)
-    risk_level = engine.get_risk_band(engine_score)
-    escalation_state = engine.get_escalation_state(session_id)
+    # 2. Compute metrics via new Severity Engine
+    from ai_apps.api.proctor_api.severity_engine import compute_risk_value, get_escalation_state
     
-    # Review required if score is below 70, or there are any HIGH/CRITICAL violations
-    if engine_score < 70 or critical_events > 0:
-        review_required = 1
-
-    # 3. Update Proctor Session fields
-    update_dict = {
-        "trust_score": engine_score,
-        "risk_level": risk_level,
-        "total_events": total_events,
-        "critical_events": critical_events,
-        "total_penalty_points": total_penalty_points,
-        "review_required": review_required
-    }
-    
-    # Safely add escalation_state in case the field exists on the DocType
     try:
-        if frappe.get_meta("Proctor Session").has_field("escalation_state"):
-            update_dict["escalation_state"] = escalation_state
-    except Exception:
-        pass
+        sev_payload = compute_risk_value(session_id)
+        escalation_state = get_escalation_state(session_id)
+        
+        risk_value = sev_payload.get("risk_value", 0.0)
+        risk_band = sev_payload.get("risk_band", "LOW")
+        
+        # Review required if risk_value > 30 (equivalent to old trust_score < 70) or any HIGH/CRITICAL violations
+        if risk_value > 30 or critical_events > 0:
+            review_required = 1
+            
+        update_dict = {
+            "total_events": total_events,
+            "critical_events": critical_events,
+            "review_required": review_required,
+            "risk_value": risk_value,
+            "risk_band": risk_band,
+            "severity_anchor": sev_payload.get("severity_anchor"),
+            "anchor_rule_id": sev_payload.get("anchor_rule"),
+            "repeat_bonus": sev_payload.get("repeat_bonus"),
+            "correlation_bonus": sev_payload.get("correlation_bonus"),
+            "escalation_state": escalation_state,
+        }
+    except Exception as _sev_err:
+        frappe.log_error(
+            title="sync_session_metrics: severity engine payload error",
+            message=str(_sev_err),
+        )
+        # Fallback update dict in case of error so event counts still update
+        update_dict = {
+            "total_events": total_events,
+            "critical_events": critical_events,
+            "review_required": review_required,
+        }
 
     frappe.db.set_value("Proctor Session", session_id, update_dict, update_modified=True)
+
 
 @frappe.whitelist(allow_guest=True)
 def delete_session(session_name: str):
@@ -335,13 +345,36 @@ def get_session_details(session_id: str):
         "medium": sum(1 for e in violations if e.get("severity") == "MEDIUM"),
         "low": sum(1 for e in violations if e.get("severity") == "LOW"),
     }
+
+    # Risk payload — full severity engine explainability
+    risk_payload = None
+    if session.get("status") != "ENDED":
+        try:
+            from ai_apps.api.proctor_api.severity_engine import compute_risk_value
+            risk_payload = compute_risk_value(session_id)
+        except Exception:
+            pass
+    # Fallback: if Redis state has expired but session doc has persisted values, use those
+    if not risk_payload and session.get("risk_value") is not None:
+        risk_payload = {
+            "risk_value": session.get("risk_value"),
+            "risk_band": session.get("risk_band"),
+            "severity_anchor": session.get("severity_anchor"),
+            "anchor_rule": session.get("anchor_rule_id"),
+            "repeat_bonus": session.get("repeat_bonus"),
+            "correlation_bonus": session.get("correlation_bonus"),
+            "contributing_events": [],  # not available from DB alone
+        }
+
     return {
         "success": True,
         "session": session,
         "events": events,
         "evidence": evidence,
         "violation_counts": violation_counts,
+        "risk_payload": risk_payload,
     }
+
 
 
 def _guess_evidence_mime(filename, evidence_type=None):

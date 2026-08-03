@@ -72,6 +72,7 @@ const VIOLATION_LABELS = {
   MOBILE_PHONE:      'Mobile Phone Detected',
   TAB_SWITCHED:      'Tab / Window Switch',
   MULTIPLE_PEOPLE:   'Multiple People Detected',
+  MULTIPLE_FACES:    'Multiple Faces Detected',
   NO_FACE:           'No Face Detected',
   GAZE_AWAY:         'Candidate Looking Away',
   FACE_COVERED:      'Face Covered',
@@ -101,6 +102,7 @@ export default function App() {
   const sidebarLoadingMoreRef = useRef(false);
   const sidebarLoadedPageRef = useRef(1);
   const [selectedSessionId, setSelectedSessionId] = useState("");
+  const [prevSessionId, setPrevSessionId] = useState(null);
   const [sessionEndAt, setSessionEndAt] = useState(null);
 
   const [remoteScreenshot, setRemoteScreenshot] = useState(null);
@@ -109,7 +111,7 @@ export default function App() {
   /* filter dropdown removed */
 
   // Dynamic metrics from API/local state
-  const [trustScore, setTrustScore] = useState(100);
+  const [trustScore, setTrustScore] = useState(null);
   const [riskBand, setRiskBand] = useState("LOW");
   const [counters, setCounters] = useState({
     tabSwitched: 0,
@@ -117,11 +119,18 @@ export default function App() {
     noFace: 0,
     multipleFaces: 0,
     noise: 0,
-    multipleMonitors: 0
+    multipleMonitors: 0,
+    mobilePhone: 0,
+    gazeAway: 0,
+    faceCovered: 0
   });
   const [startedAt, setStartedAt] = useState("--:--");
   const [submittedAt, setSubmittedAt] = useState(null);
   const [events, setEvents] = useState([]);
+  const [atsId, setAtsId] = useState("");
+  const [testDate, setTestDate] = useState("");
+  const [activeViolationFilter, setActiveViolationFilter] = useState(null);
+  const [riskPayload, setRiskPayload] = useState(null);
 
   const sessionIdRef = useRef(null);
   const sessionActiveRef = useRef(false);
@@ -233,7 +242,7 @@ export default function App() {
     setUserName("");
     setUserEmail("");
     setQuizCode("");
-    setTrustScore(100);
+    setTrustScore(null);
     setRiskBand("LOW");
     setCounters({
       tabSwitched: 0,
@@ -241,10 +250,17 @@ export default function App() {
       noFace: 0,
       multipleFaces: 0,
       noise: 0,
-      multipleMonitors: 0
+      multipleMonitors: 0,
+      mobilePhone: 0,
+      gazeAway: 0,
+      faceCovered: 0
     });
     setEvents([]);
     setSessionEndAt(null);
+    setAtsId("");
+    setTestDate("");
+    setActiveViolationFilter(null);
+    setRiskPayload(null);
   }, []);
 
   const pollSessionDetails = useCallback(async (sId) => {
@@ -265,8 +281,41 @@ export default function App() {
       setUserName(s.user_name || s.user_id || "Candidate");
       setUserEmail(s.user_email || "No email");
       setQuizCode(s.entity_id || "Quiz");
-      setTrustScore(s.trust_score ?? 100);
-      setRiskBand(s.risk_level || "LOW");
+      setAtsId(s.entity_id || "");
+      if (s.creation) {
+        // Format test date as "Jan 1, 2024"
+        setTestDate(new Date(s.creation).toLocaleDateString(undefined, {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        }));
+      }
+      console.log(`[DEBUG] Fetched details for session ${sId}:`, detail);
+      if (detail.risk_payload) {
+        console.log(`[DEBUG] Raw risk_payload:`, detail.risk_payload);
+        let payloadObj = detail.risk_payload;
+        if (typeof payloadObj === 'string') {
+          try {
+            payloadObj = JSON.parse(payloadObj);
+          } catch (e) {
+            console.error("[DEBUG] Failed to parse risk_payload", e);
+          }
+        }
+        console.log(`[DEBUG] Parsed risk_payload:`, payloadObj);
+        setRiskPayload(payloadObj);
+        const risk = payloadObj.risk_value ?? 0;
+        console.log(`[DEBUG] Calculated risk from payload: ${risk} -> Trust Score: ${100 - risk}`);
+        setTrustScore(100 - risk);
+        setRiskBand(payloadObj.risk_band || s.risk_band || "LOW");
+      } else {
+        console.log(`[DEBUG] No risk_payload in detail. Fallback to session risk_value.`);
+        setRiskPayload(null);
+        // Fallback to session fields if Redis expired but session is updated
+        const risk = s.risk_value ?? 0;
+        console.log(`[DEBUG] Session risk_value: ${s.risk_value} -> Calculated risk: ${risk} -> Trust Score: ${100 - risk}`);
+        setTrustScore(100 - risk);
+        setRiskBand(s.risk_band || "LOW");
+      }
 
       if (s.creation) {
         setStartedAt(new Date(s.creation).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
@@ -383,6 +432,8 @@ export default function App() {
             evidence: evidenceUrl,
             report_evidence: originalEvidenceUrl || evidenceUrl,
             evidenceType,
+            severity: e.severity,
+            penalty_points: e.penalty_points,
           };
         });
       setEvents(formattedEvents);
@@ -393,16 +444,22 @@ export default function App() {
         noFace: 0,
         multipleFaces: 0,
         noise: 0,
-        multipleMonitors: 0
+        multipleMonitors: 0,
+        mobilePhone: 0,
+        gazeAway: 0,
+        faceCovered: 0
       };
       rawEvents.forEach(e => {
         const type = e.event_type;
         if (type === 'TAB_SWITCHED') newCounters.tabSwitched++;
         else if (type === 'SPLIT_SCREEN') newCounters.splitScreen++;
         else if (type === 'NO_FACE') newCounters.noFace++;
-        else if (type === 'MULTIPLE_PEOPLE') newCounters.multipleFaces++;
+        else if (type === 'MULTIPLE_PEOPLE' || type === 'MULTIPLE_FACES') newCounters.multipleFaces++;
         else if (type === 'AUDIO_VAD' || type === 'NOISE') newCounters.noise++;
         else if (type === 'MULTIPLE_MONITORS') newCounters.multipleMonitors++;
+        else if (type === 'MOBILE_PHONE') newCounters.mobilePhone++;
+        else if (type === 'GAZE_AWAY') newCounters.gazeAway++;
+        else if (type === 'FACE_COVERED') newCounters.faceCovered++;
       });
       setCounters(newCounters);
 
@@ -414,6 +471,38 @@ export default function App() {
     }
   }, [stopMonitoring]);
 
+  if (selectedSessionId !== prevSessionId) {
+    setPrevSessionId(selectedSessionId);
+
+    setRemoteScreenshot(null);
+    setUserName("Loading...");
+    setUserEmail("Loading...");
+    setQuizCode("");
+    setAtsId("");
+    setTestDate("");
+    setStartedAt("--:--");
+    setSubmittedAt(null);
+    setSessionEndAt(null);
+    setEvents([]);
+    setCounters({
+      tabSwitched: 0,
+      splitScreen: 0,
+      noFace: 0,
+      multipleFaces: 0,
+      noise: 0,
+      multipleMonitors: 0,
+      mobilePhone: 0,
+      gazeAway: 0,
+      faceCovered: 0
+    });
+    setTrustScore(null);
+    setRiskBand("LOW");
+    setRiskPayload(null);
+
+    setSessionId(selectedSessionId);
+    sessionIdRef.current = selectedSessionId;
+  }
+
   useEffect(() => {
     if (!selectedSessionId) {
       monitoringEnabledRef.current = false;
@@ -422,9 +511,6 @@ export default function App() {
       return undefined;
     }
 
-    setSessionId(selectedSessionId);
-    sessionIdRef.current = selectedSessionId;
-
     const row = sidebarSessions.find((s) => s.name === selectedSessionId);
     const live = row ? isLiveSessionStatus(row.status) : false;
     monitoringEnabledRef.current = live;
@@ -432,10 +518,23 @@ export default function App() {
     setSessionActive(live);
 
     pollSessionDetails(selectedSessionId);
-    const pollMs = live ? 3000 : 30000;
-    const interval = setInterval(() => pollSessionDetails(selectedSessionId), pollMs);
+  }, [selectedSessionId, pollSessionDetails]);
+
+  // Set up polling interval depending on stable sessionActive state (only poll live sessions!)
+  useEffect(() => {
+    if (!selectedSessionId || !sessionActive) return undefined;
+
+    const interval = setInterval(() => {
+      pollSessionDetails(selectedSessionId);
+    }, 3000);
+
     return () => clearInterval(interval);
-  }, [selectedSessionId, pollSessionDetails, sidebarSessions]);
+  }, [selectedSessionId, sessionActive, pollSessionDetails]);
+
+  // Reset violation filter when session changes
+  useEffect(() => {
+    setActiveViolationFilter(null);
+  }, [selectedSessionId]);
 
   const startMonitoring = () => {
     if (!selectedSessionId) {
@@ -525,7 +624,7 @@ export default function App() {
   // Circular Trust Score Stroke calculations
   const radius = 36;
   const strokeCircumference = 2 * Math.PI * radius; // ~226.19
-  const strokeOffset = strokeCircumference - (strokeCircumference * trustScore) / 100;
+  const strokeOffset = strokeCircumference - (strokeCircumference * (trustScore ?? 0)) / 100;
 
   const handleDeleteCandidate = async () => {
     if (!selectedSessionId) {
@@ -561,6 +660,7 @@ export default function App() {
             sessions={sidebarSessions}
             selectedSessionId={selectedSessionId}
             onSelectSession={setSelectedSessionId}
+            selectedSessionTrustScore={trustScore}
           />
         </aside>
 
@@ -573,16 +673,28 @@ export default function App() {
             candidatePhoto={remoteScreenshot}
             sessionWindow={sessionWindow}
             hasSession={!!selectedSessionId}
+            atsId={atsId}
+            testDate={testDate}
           />
 
-          <SummaryMetricsRow trustScore={trustScore} severityCounts={severityCounts} />
+          <SummaryMetricsRow trustScore={trustScore} severityCounts={severityCounts} riskPayload={riskPayload} />
 
           <div className="grid min-h-0 flex-1 shrink-0 grid-cols-1 gap-4 lg:grid-cols-[1fr_340px]">
             <div className="flex min-h-0 flex-col max-lg:max-h-[min(50vh,26rem)] lg:h-[600px]">
-              <SessionTimeline events={events} sessionKey={selectedSessionId} />
+              <SessionTimeline
+                events={events}
+                sessionKey={selectedSessionId}
+                violationFilter={activeViolationFilter}
+                onClearFilter={() => setActiveViolationFilter(null)}
+              />
             </div>
             <div className="min-h-0 overflow-hidden lg:h-[600px]">
-              <SystemAnalysisOverview counters={counters} sessionKey={selectedSessionId} />
+              <SystemAnalysisOverview
+                counters={counters}
+                sessionKey={selectedSessionId}
+                activeViolationFilter={activeViolationFilter}
+                onViolationFilter={setActiveViolationFilter}
+              />
             </div>
           </div>
         </section>

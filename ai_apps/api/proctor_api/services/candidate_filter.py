@@ -11,12 +11,14 @@ returns a paginated, filtered list of candidate sessions.
 
 Supported filters
 -----------------
-* ``query``        – free-text match on user_name or user_email (LIKE)
+* ``query``        – free-text match on user_name, user_email, or entity_id/ATS ID (LIKE)
 * ``risk_levels``  – JSON array, e.g. ``["HIGH","MEDIUM"]``
   Maps to the ``risk_level`` field on Proctor Session.
 * ``trust_min``    – minimum trust score (inclusive, default 0)
 * ``trust_max``    – maximum trust score (inclusive, default 100)
 * ``status``       – single status string or JSON array, e.g. ``"ENDED"``
+* ``date_from``    – ISO date string (inclusive), e.g. ``"2024-01-01"``
+* ``date_to``      – ISO date string (inclusive), e.g. ``"2024-12-31"``
 * ``page``         – 1-based page number (default 1)
 * ``limit``        – records per page, capped at 100 (default 25)
 
@@ -109,6 +111,8 @@ def filter_sessions(
     trust_min: int = 0,
     trust_max: int = 100,
     status: str = "[]",
+    date_from: str = "",
+    date_to: str = "",
     page: int = 1,
     limit: int = _DEFAULT_LIMIT,
 ):
@@ -140,18 +144,26 @@ def filter_sessions(
     filters: list = []
 
     if risk_level_list:
-        filters.append(["risk_level", "in", risk_level_list])
+        filters.append(["risk_band", "in", risk_level_list])
 
     if status_list:
         filters.append(["status", "in", status_list])
 
-    # Trust score range
+    # Risk value range mapping (trust_score = 100 - risk_value)
     if trust_min > 0:
-        filters.append(["trust_score", ">=", trust_min])
+        filters.append(["risk_value", "<=", 100 - trust_min])
     if trust_max < 100:
-        filters.append(["trust_score", "<=", trust_max])
+        filters.append(["risk_value", ">=", 100 - trust_max])
 
-    # Free-text: OR across user_name and user_email using Frappe OR filters
+    # Date range filter
+    date_from = (date_from or "").strip()[:20]
+    date_to   = (date_to   or "").strip()[:20]
+    if date_from:
+        filters.append(["creation", ">=", date_from + " 00:00:00"])
+    if date_to:
+        filters.append(["creation", "<=", date_to   + " 23:59:59"])
+
+    # Free-text: OR across user_name, user_email, and entity_id (ATS ID)
     # We apply this as a post-filter below if frappe.get_all doesn't support
     # OR filters easily in all versions.
     text_filters = []
@@ -159,6 +171,7 @@ def filter_sessions(
         text_filters = [
             ["user_name",  "like", f"%{query}%"],
             ["user_email", "like", f"%{query}%"],
+            ["entity_id",  "like", f"%{query}%"],
         ]
 
     # --- Fetch records -------------------------------------------------------
@@ -169,8 +182,8 @@ def filter_sessions(
         "user_id",
         "entity_id",
         "status",
-        "trust_score",
-        "risk_level",
+        "risk_value",
+        "risk_band",
         "total_events",
         "critical_events",
         "review_required",
@@ -180,9 +193,7 @@ def filter_sessions(
 
     try:
         if text_filters:
-            # Frappe supports OR filters via a list of filter lists when you
-            # pass them as the top-level ``filters`` param combined with
-            # ``or_filters``.
+            # Frappe supports OR filters via separate queries merged with de-dup.
             name_records = frappe.get_all(
                 "Proctor Session",
                 filters=filters + [["user_name", "like", f"%{query}%"]],
@@ -197,10 +208,17 @@ def filter_sessions(
                 order_by="creation desc",
                 limit_page_length=_MAX_LIMIT * 10,
             )
+            ats_records = frappe.get_all(
+                "Proctor Session",
+                filters=filters + [["entity_id", "like", f"%{query}%"]],
+                fields=fields,
+                order_by="creation desc",
+                limit_page_length=_MAX_LIMIT * 10,
+            )
             # Merge and de-duplicate preserving order
             seen = set()
             merged = []
-            for r in name_records + email_records:
+            for r in name_records + email_records + ats_records:
                 if r["name"] not in seen:
                     seen.add(r["name"])
                     merged.append(r)

@@ -7,7 +7,7 @@ DEFAULT_RULES = [
     {
         "rule_name": "NO_AUDIO",
         "rule_id": "NO_AUDIO",
-        "enabled": 1,  # monitor.js emits on getUserMedia (audio) failure
+        "enabled": 1,
         "condition_type": "threshold",
         "threshold_ms": 0,
         "window_ms": 0,
@@ -16,13 +16,16 @@ DEFAULT_RULES = [
         "penalty_points": 20,
         "description": "Microphone access denied or audio stream unavailable",
         "system_rule": 0,
+        # Severity engine fields
+        "severity_tier": "High",
+        "threshold_type": "Instant",
+        "reset_on_clear": 1,
+        "correlation_window_ms": 30000,
     },
-
-    # ── monitor.js emits via Autoproctor 'violation' event → reportAlert → value:1 ─
     {
         "rule_name": "NO_VIDEO",
         "rule_id": "NO_VIDEO",
-        "enabled": 1,  # monitor.js emits on getUserMedia failure
+        "enabled": 1,
         "condition_type": "threshold",
         "threshold_ms": 0,
         "window_ms": 0,
@@ -31,11 +34,15 @@ DEFAULT_RULES = [
         "penalty_points": 50,
         "description": "Camera access denied or video stream unavailable",
         "system_rule": 0,
+        "severity_tier": "Critical",
+        "threshold_type": "Instant",
+        "reset_on_clear": 1,
+        "correlation_window_ms": 30000,
     },
     {
         "rule_name": "FULLSCREEN_EXIT",
         "rule_id": "FULLSCREEN_EXIT",
-        "enabled": 1,  # monitor.js fullscreenchange listener is live
+        "enabled": 1,
         "condition_type": "threshold",
         "threshold_ms": 0,
         "window_ms": 0,
@@ -44,13 +51,15 @@ DEFAULT_RULES = [
         "penalty_points": 10,
         "description": "Candidate exited fullscreen mode",
         "system_rule": 0,
+        "severity_tier": "Medium",
+        "threshold_type": "Instant",
+        "reset_on_clear": 1,
+        "correlation_window_ms": 30000,
     },
-
-    # ── Threshold rules: reportAlert sends value:1 (default) ─────────────────────
     {
         "rule_name": "NOISE",
         "rule_id": "NOISE",
-        "enabled": 1,  # reportAlert default payload value:1
+        "enabled": 1,
         "condition_type": "threshold",
         "threshold_ms": 0,
         "window_ms": 0,
@@ -59,11 +68,18 @@ DEFAULT_RULES = [
         "penalty_points": 5,
         "description": "Background noise detected",
         "system_rule": 1,
+        # NOISE: can be noisy (pun intended) — use Frequency to reduce false positives
+        "severity_tier": "Low",
+        "threshold_type": "Frequency",
+        "frequency_count": 2,
+        "frequency_window_ms": 15000,
+        "reset_on_clear": 1,
+        "correlation_window_ms": 30000,
     },
     {
         "rule_name": "NO_FACE",
         "rule_id": "NO_FACE",
-        "enabled": 1,  # reportAlert sends value:0 → engine special-cases value==0
+        "enabled": 1,
         "condition_type": "threshold",
         "threshold_ms": 0,
         "window_ms": 0,
@@ -72,11 +88,15 @@ DEFAULT_RULES = [
         "penalty_points": 5,
         "description": "No face detected",
         "system_rule": 1,
+        "severity_tier": "Medium",
+        "threshold_type": "Instant",
+        "reset_on_clear": 1,
+        "correlation_window_ms": 30000,
     },
     {
         "rule_name": "MULTIPLE_PEOPLE",
         "rule_id": "MULTIPLE_PEOPLE",
-        "enabled": 1,  # reportAlert sends value:faceCount (>=2)
+        "enabled": 1,
         "condition_type": "threshold",
         "threshold_ms": 0,
         "window_ms": 0,
@@ -85,6 +105,13 @@ DEFAULT_RULES = [
         "penalty_points": 15,
         "description": "Multiple people detected",
         "system_rule": 1,
+        # ML smoothing: 3/5 frames already applied upstream — Frequency gate for backend
+        "severity_tier": "High",
+        "threshold_type": "Frequency",
+        "frequency_count": 3,
+        "frequency_window_ms": 5000,
+        "reset_on_clear": 1,
+        "correlation_window_ms": 30000,
     },
     {
         "rule_name": "MULTIPLE_FACES",
@@ -98,11 +125,18 @@ DEFAULT_RULES = [
         "penalty_points": 15,
         "description": "Multiple faces detected",
         "system_rule": 1,
+        # ML smoothing: 4/5 frames already applied upstream
+        "severity_tier": "High",
+        "threshold_type": "Frequency",
+        "frequency_count": 3,
+        "frequency_window_ms": 5000,
+        "reset_on_clear": 1,
+        "correlation_window_ms": 30000,
     },
     {
         "rule_name": "GAZE_AWAY",
         "rule_id": "GAZE_AWAY",
-        "enabled": 1,  # reportAlert will send value:1 after frontend fix below
+        "enabled": 1,
         "condition_type": "threshold",
         "threshold_ms": 0,
         "window_ms": 0,
@@ -111,11 +145,17 @@ DEFAULT_RULES = [
         "penalty_points": 2,
         "description": "Gaze away detected",
         "system_rule": 1,
+        # lookingAway: cumulative — reset_on_clear = 0
+        "severity_tier": "Low",
+        "threshold_type": "Duration",
+        "duration_ms": 3000,
+        "reset_on_clear": 0,
+        "correlation_window_ms": 30000,
     },
     {
         "rule_name": "MOBILE_PHONE",
         "rule_id": "MOBILE_PHONE",
-        "enabled": 1,  # reportAlert sends value:1
+        "enabled": 1,
         "condition_type": "threshold",
         "threshold_ms": 0,
         "window_ms": 0,
@@ -124,11 +164,18 @@ DEFAULT_RULES = [
         "penalty_points": 30,
         "description": "Mobile phone detected",
         "system_rule": 1,
+        # ML smoothing: 2/3 frames (phoneDetected)
+        "severity_tier": "High",
+        "threshold_type": "Frequency",
+        "frequency_count": 3,
+        "frequency_window_ms": 5000,
+        "reset_on_clear": 1,
+        "correlation_window_ms": 30000,
     },
     {
         "rule_name": "OBJECT_DETECTED",
         "rule_id": "OBJECT_DETECTED",
-        "enabled": 1,  # reportAlert default payload value:1
+        "enabled": 1,
         "condition_type": "threshold",
         "threshold_ms": 0,
         "window_ms": 0,
@@ -137,11 +184,17 @@ DEFAULT_RULES = [
         "penalty_points": 25,
         "description": "Restricted object detected (e.g. book, phone, device)",
         "system_rule": 1,
+        "severity_tier": "Medium",
+        "threshold_type": "Frequency",
+        "frequency_count": 3,
+        "frequency_window_ms": 5000,
+        "reset_on_clear": 1,
+        "correlation_window_ms": 30000,
     },
     {
         "rule_name": "FACE_COVERED",
         "rule_id": "FACE_COVERED",
-        "enabled": 1,  # reportAlert will send value:1 after frontend fix below
+        "enabled": 1,
         "condition_type": "threshold",
         "threshold_ms": 0,
         "window_ms": 0,
@@ -150,26 +203,37 @@ DEFAULT_RULES = [
         "penalty_points": 3,
         "description": "Face covered detected",
         "system_rule": 1,
+        # faceCovered: short duration threshold
+        "severity_tier": "Low",
+        "threshold_type": "Duration",
+        "duration_ms": 1500,
+        "reset_on_clear": 1,
+        "correlation_window_ms": 30000,
     },
     {
         # AUDIO_VAD sends duration_ms, not value — use duration condition type.
-        # Engine reads event.payload.get('duration_ms') and accumulates it.
         "rule_name": "AUDIO_VAD",
         "rule_id": "AUDIO_VAD",
         "enabled": 1,
         "condition_type": "duration",
-        "threshold_ms": 5000,  # cumulative ms of multi-speaker audio before firing
+        "threshold_ms": 5000,
         "window_ms": 0,
         "cooldown_ms": 10000,
         "severity": "MEDIUM",
         "penalty_points": 10,
         "description": "Cumulative overlapping-speech duration exceeded threshold",
         "system_rule": 1,
+        # multi_speaker: cumulative audio duration
+        "severity_tier": "Medium",
+        "threshold_type": "Duration",
+        "duration_ms": 3000,
+        "reset_on_clear": 1,
+        "correlation_window_ms": 30000,
     },
     {
         "rule_name": "TAB_SWITCHED",
         "rule_id": "TAB_SWITCHED",
-        "enabled": 1,  # reportAlert default payload value:1
+        "enabled": 1,
         "condition_type": "threshold",
         "threshold_ms": 0,
         "window_ms": 0,
@@ -178,11 +242,15 @@ DEFAULT_RULES = [
         "penalty_points": 10,
         "description": "Tab switched detected",
         "system_rule": 1,
+        "severity_tier": "High",
+        "threshold_type": "Instant",
+        "reset_on_clear": 1,
+        "correlation_window_ms": 30000,
     },
     {
         "rule_name": "MULTIPLE_MONITORS",
         "rule_id": "MULTIPLE_MONITORS",
-        "enabled": 1,  # reportAlert default payload value:1
+        "enabled": 1,
         "condition_type": "threshold",
         "threshold_ms": 0,
         "window_ms": 0,
@@ -191,8 +259,13 @@ DEFAULT_RULES = [
         "penalty_points": 20,
         "description": "Multiple monitors detected",
         "system_rule": 1,
+        "severity_tier": "High",
+        "threshold_type": "Instant",
+        "reset_on_clear": 1,
+        "correlation_window_ms": 30000,
     },
 ]
+
 
 @frappe.whitelist(allow_guest=True)
 def check_proctor_data():

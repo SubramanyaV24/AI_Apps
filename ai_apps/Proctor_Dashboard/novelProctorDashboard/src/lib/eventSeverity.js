@@ -1,6 +1,7 @@
 const HIGH_TYPES = new Set([
   'NO_FACE',
   'MULTIPLE_PEOPLE',
+  'MULTIPLE_FACES',
   'MOBILE_PHONE',
   'FACE_COVERED',
   'MULTIPLE_MONITORS',
@@ -21,10 +22,24 @@ export function getEventSeverity(type) {
 }
 
 export function countEventsBySeverity(events = []) {
-  const counts = { high: 0, moderate: 0, low: 0 };
+  const counts = { critical: 0, high: 0, moderate: 0, low: 0 };
   events.forEach((e) => {
-    const key = getEventSeverity(e.violationType || e.type);
-    counts[key] += 1;
+    // Only count events that triggered a violation
+    if (!e.severity && !e.penalty_points) return;
+    
+    let key;
+    if (e.severity) {
+      key = e.severity.toLowerCase();
+    } else {
+      key = getEventSeverity(e.violationType || e.type);
+    }
+    
+    // Map backend severity levels to frontend severity counts
+    if (key === 'medium') key = 'moderate';
+    
+    if (counts[key] !== undefined) {
+      counts[key] += 1;
+    }
   });
   return counts;
 }

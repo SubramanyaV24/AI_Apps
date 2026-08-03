@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react"
-import { ChevronLeft, ChevronRight, Music, PlaySquare } from "lucide-react"
+import { Music, PlaySquare, X } from "lucide-react"
 import {
   getEvidenceMediaType,
   isPreviewableEvidence,
@@ -7,17 +7,39 @@ import {
 } from "../../lib/evidenceUtils"
 import { EvidencePreviewModal } from "./EvidencePreviewModal"
 
-const PAGE_SIZE = 5
 const MAX_PAGE_BUTTONS = 5
 
-/** Timeline rail — light gray nodes + connector (Figma stepper) */
-const TIMELINE_DOT = "relative z-10 mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#2563EB]"
-const TIMELINE_LINE = "absolute left-1/2 top-3 h-full w-px -translate-x-1/2 bg-[#5a5a5a]"
+/** Maps the counter key used in SystemAnalysisOverview → event_type strings */
+const FILTER_KEY_TO_EVENT_TYPES = {
+  tabSwitched:      ["TAB_SWITCHED"],
+  splitScreen:      ["SPLIT_SCREEN"],
+  noFace:           ["NO_FACE"],
+  multipleFaces:    ["MULTIPLE_PEOPLE", "MULTIPLE_FACES"],
+  noise:            ["AUDIO_VAD", "NOISE"],
+  multipleMonitors: ["MULTIPLE_MONITORS"],
+  mobilePhone:      ["MOBILE_PHONE"],
+  gazeAway:         ["GAZE_AWAY"],
+  faceCovered:      ["FACE_COVERED"],
+}
+
+/** Human-readable label for each filter key */
+const FILTER_KEY_LABELS = {
+  tabSwitched:      "Tab Switches",
+  splitScreen:      "Split Screen",
+  noFace:           "Face Missing",
+  multipleFaces:    "Multiple Faces",
+  noise:            "Noise Events",
+  multipleMonitors: "External Monitor",
+  mobilePhone:      "Mobile Phone",
+  gazeAway:         "Looking Away",
+  faceCovered:      "Face Covered",
+}
 
 const VIOLATION_LABELS = {
   MOBILE_PHONE:      'Mobile Phone Detected',
   TAB_SWITCHED:      'Tab / Window Switch',
   MULTIPLE_PEOPLE:   'Multiple People Detected',
+  MULTIPLE_FACES:    'Multiple Faces Detected',
   NO_FACE:           'No Face Detected',
   GAZE_AWAY:         'Candidate Looking Away',
   FACE_COVERED:      'Face Covered',
@@ -41,91 +63,6 @@ function formatEventTitle(evt) {
   if (!evt) return 'Event'
   if (VIOLATION_LABELS[evt]) return VIOLATION_LABELS[evt]
   return evt.split('_').map((w) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ')
-}
-
-function getPageNumbers(current, total) {
-  if (total <= MAX_PAGE_BUTTONS) {
-    return Array.from({ length: total }, (_, i) => i + 1)
-  }
-  let start = Math.max(1, current - 2)
-  let end = Math.min(total, start + MAX_PAGE_BUTTONS - 1)
-  start = Math.max(1, end - MAX_PAGE_BUTTONS + 1)
-  return Array.from({ length: end - start + 1 }, (_, i) => start + i)
-}
-
-function TimelinePagination({ page, totalPages, totalItems, onPageChange }) {
-  if (totalPages <= 1) return null
-
-  const pageNumbers = getPageNumbers(page, totalPages)
-  const rangeStart = (page - 1) * PAGE_SIZE + 1
-  const rangeEnd = Math.min(page * PAGE_SIZE, totalItems)
-
-  return (
-    <div className="mt-4 shrink-0 border-t border-white/10 pt-4">
-      <p className="mb-2 text-center text-[10px] text-muted-foreground">
-        Showing {rangeStart}–{rangeEnd} of {totalItems} events
-      </p>
-      <div className="flex items-center justify-center gap-1">
-        <button
-          type="button"
-          disabled={page <= 1}
-          onClick={() => onPageChange(page - 1)}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
-          aria-label="Previous page"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-        {pageNumbers[0] > 1 && (
-          <>
-            <button
-              type="button"
-              onClick={() => onPageChange(1)}
-              className="flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-xs font-semibold text-muted-foreground hover:bg-white/10"
-            >
-              1
-            </button>
-            {pageNumbers[0] > 2 && <span className="px-1 text-muted-foreground">…</span>}
-          </>
-        )}
-        {pageNumbers.map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => onPageChange(p)}
-            className={`flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-xs font-semibold transition-colors
-              ${p === page
-                ? "bg-blue-600 text-white"
-                : "text-muted-foreground hover:bg-white/10 hover:text-foreground"}`}
-          >
-            {p}
-          </button>
-        ))}
-        {pageNumbers[pageNumbers.length - 1] < totalPages && (
-          <>
-            {pageNumbers[pageNumbers.length - 1] < totalPages - 1 && (
-              <span className="px-1 text-muted-foreground">…</span>
-            )}
-            <button
-              type="button"
-              onClick={() => onPageChange(totalPages)}
-              className="flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-xs font-semibold text-muted-foreground hover:bg-white/10"
-            >
-              {totalPages}
-            </button>
-          </>
-        )}
-        <button
-          type="button"
-          disabled={page >= totalPages}
-          onClick={() => onPageChange(page + 1)}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
-          aria-label="Next page"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
-      </div>
-    </div>
-  )
 }
 
 function EvidenceThumbnail({ evt, onPreview }) {
@@ -172,32 +109,39 @@ function EvidenceThumbnail({ evt, onPreview }) {
   )
 }
 
-export function SessionTimeline({ events, sessionKey }) {
-  const [page, setPage] = useState(1)
+export function SessionTimeline({ events, sessionKey, violationFilter, onClearFilter }) {
   const [preview, setPreview] = useState(null)
 
   const sortedEvents = useMemo(() => {
+    const parseTime = (val) => {
+      if (!val) return 0;
+      let d = new Date(val);
+      if (!isNaN(d.getTime())) return d.getTime();
+      d = new Date(`1970/01/01 ${val}`);
+      if (!isNaN(d.getTime())) return d.getTime();
+      return 0;
+    };
     return [...events].sort((a, b) => {
-      const ta = new Date(a.timestamp || a.occurredAt || 0).getTime()
-      const tb = new Date(b.timestamp || b.occurredAt || 0).getTime()
-      return tb - ta
+      const ta = parseTime(a.timestamp || a.occurredAt);
+      const tb = parseTime(b.timestamp || b.occurredAt);
+      return tb - ta;
     })
   }, [events])
 
-  const totalPages = Math.max(1, Math.ceil(sortedEvents.length / PAGE_SIZE))
-
-  const paginatedEvents = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE
-    return sortedEvents.slice(start, start + PAGE_SIZE)
-  }, [sortedEvents, page])
+  // Apply violation type filter from SystemAnalysisOverview
+  const filteredEvents = useMemo(() => {
+    if (!violationFilter) return sortedEvents
+    const allowedTypes = FILTER_KEY_TO_EVENT_TYPES[violationFilter] || []
+    if (allowedTypes.length === 0) return sortedEvents
+    return sortedEvents.filter((evt) => {
+      const t = (evt.violationType || evt.type || '').toUpperCase()
+      return allowedTypes.includes(t)
+    })
+  }, [sortedEvents, violationFilter])
 
   useEffect(() => {
-    setPage(1)
+    // No page state to reset — just scroll to top when session changes
   }, [sessionKey])
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages)
-  }, [page, totalPages])
 
   const openPreview = (evt) => {
     const url = resolveEvidenceUrl(evt.evidence)
@@ -213,19 +157,44 @@ export function SessionTimeline({ events, sessionKey }) {
   return (
     <>
       <div className="flex h-full max-h-full min-h-0 flex-col overflow-hidden max-lg:max-h-[min(50vh,26rem)]">
-        <h3 className="mb-5 shrink-0 text-[10px] font-bold uppercase tracking-widest text-[#888888]">
-          Session Activity Timeline
-        </h3>
+        <div className="mb-5 shrink-0 flex items-center justify-between gap-2">
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#888888]">
+            Session Activity Timeline
+          </h3>
+          {violationFilter && (
+            <button
+              type="button"
+              onClick={onClearFilter}
+              className="flex items-center gap-1 rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-semibold text-blue-300 hover:bg-blue-500/25 transition-colors"
+            >
+              Filtering: {FILTER_KEY_LABELS[violationFilter] || violationFilter}
+              <X className="h-2.5 w-2.5" />
+            </button>
+          )}
+        </div>
 
         <div className="timeline-scroll-area min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-2 max-lg:overflow-y-scroll">
           {sortedEvents.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
               No events recorded in this session.
             </div>
+          ) : filteredEvents.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              No {FILTER_KEY_LABELS[violationFilter] || violationFilter} events found.
+              {onClearFilter && (
+                <button
+                  type="button"
+                  onClick={onClearFilter}
+                  className="mt-2 block mx-auto text-xs text-blue-400 underline hover:text-blue-300"
+                >
+                  Clear filter
+                </button>
+              )}
+            </div>
           ) : (
             <div className="flex flex-col">
-              {paginatedEvents.map((evt, idx) => {
-                const isLast = idx === paginatedEvents.length - 1
+              {filteredEvents.map((evt, idx) => {
+                const isLast = idx === filteredEvents.length - 1
                 const eventKey = evt.eventId || evt.timestamp || `${evt.violationType}-${evt.occurredAt}`
                 const resolvedEvidence = resolveEvidenceUrl(evt.evidence)
                 const canPreview = isPreviewableEvidence(
@@ -297,15 +266,6 @@ export function SessionTimeline({ events, sessionKey }) {
             </div>
           )}
         </div>
-
-        {sortedEvents.length > 0 && (
-          <TimelinePagination
-            page={page}
-            totalPages={totalPages}
-            totalItems={sortedEvents.length}
-            onPageChange={setPage}
-          />
-        )}
       </div>
 
       <EvidencePreviewModal

@@ -77,12 +77,15 @@ def evaluate_event(**kwargs):
         if key in payload:
             event_payload[key] = safe_numeric(payload[key])
 
-    # Initialise and load rules - force reload to ensure we have updated code
+    # Initialise and load rules
     engine = RuleEngine()
     engine.load_rules(force_reload=True)
     
-    # Process the event
-    violations = engine.process_event(session, EngineEvent(event_type=event_type, payload=event_payload))
+    # We no longer run engine.process_event() since the legacy scoring engine is removed.
+    # We simply process the raw signal through the severity pipeline later.
+    # To keep the response format consistent, we assume no immediate synchronous violations 
+    # (they are handled asynchronously or aggregated).
+    violations = []
 
     # Record the event using existing proctor_event logic for consistency
     # Re‑use the same child insertion path as create_event
@@ -122,21 +125,7 @@ def evaluate_event(**kwargs):
         frappe.logger().info(f"[evaluate_event] added evidence to meta_dict, meta_dict now has keys: {list(meta_dict.keys())}")
 
     if violations:
-        # Sum of penalties
-        total_penalty = sum(v.penalty for v in violations)
-        payload["penalty_points"] = total_penalty
-        payload["trust_score_delta"] = total_penalty
-        
-        # Max severity
-        severity_order = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
-        max_severity = "LOW"
-        for v in violations:
-            if v.severity in severity_order:
-                if severity_order.index(v.severity) > severity_order.index(max_severity):
-                    max_severity = v.severity
-        payload["severity"] = max_severity
-        
-        meta_dict["violations"] = [v.__dict__ for v in violations]
+        meta_dict["violations"] = [v for v in violations]
     
     payload["metadata"] = json.dumps(meta_dict)
     # Log what we're passing to create_event
@@ -144,45 +133,113 @@ def evaluate_event(**kwargs):
     if "evidence" in payload:
         create_event_log_payload["evidence_length"] = len(str(payload["evidence"])) if payload["evidence"] else 0
         create_event_log_payload["evidence_present"] = bool(payload["evidence"])
-    frappe.logger().info(f"[evaluate_event] calling create_event with: {create_event_log_payload}")
+    # Run the severity engine pipeline
+    severity_payload = None
+    triggered_violations = []
+    try:
+        severity_payload = _run_severity_pipeline(session, engine, triggered_violations, event_type, payload, event_payload)
+    except Exception as _sev_exc:
+        frappe.log_error(
+            title="[severity_engine] Pipeline error",
+            message=str(_sev_exc),
+        )
+
+    if triggered_violations:
+        payload["severity"] = triggered_violations[0].get("severity", "LOW")
+        meta_dict["violations"] = triggered_violations
+        payload["metadata"] = json.dumps(meta_dict)
 
     # Call create_event to store the row
     result = create_event(**payload)
 
-    # Sync all session metrics (score, risk, event counts) to Proctor Session DB
-    engine_score = engine.get_current_score(session)
-    try:
-        from ai_apps.api.proctor_api.proctor_session import sync_session_metrics
-        sync_session_metrics(session)
-    except Exception as e:
-        pass  # Logging can be added if needed
-
-    # Determine the worst UI mode / message from violations to return
-    # UI Mode severity order: critical_modal > serious_modal > warning_banner > toast
+    # Calculate worst UI mode
     ui_modes = {"toast": 1, "warning_banner": 2, "serious_modal": 3, "critical_modal": 4}
     worst_ui_mode = "toast"
     worst_message = ""
     req_ack = False
-    
-    for v in violations:
-        if ui_modes.get(v.ui_mode, 0) >= ui_modes.get(worst_ui_mode, 0):
-            worst_ui_mode = v.ui_mode
-            worst_message = v.message
-            if v.requires_acknowledgement:
+
+    for v in triggered_violations:
+        v_mode = v.get("ui_mode", "toast")
+        if ui_modes.get(v_mode, 0) >= ui_modes.get(worst_ui_mode, 0):
+            worst_ui_mode = v_mode
+            worst_message = v.get("message", "")
+            if v.get("requires_acknowledgement"):
                 req_ack = True
 
-    risk_band = engine.get_risk_band(engine_score)
-    escalation_state = engine.get_escalation_state(session)
-    return {
+    # Sync metrics (must run after severity pipeline updates Redis)
+    try:
+        from ai_apps.api.proctor_api.proctor_session import sync_session_metrics
+        sync_session_metrics(session)
+    except Exception as e:
+        frappe.log_error(title="sync_session_metrics failed", message=str(e))
+
+    response = {
         "success": True,
         "session": session,
-        "violations": [vars(v) for v in violations],
-        "engine_score": engine_score,
-        "risk_band": risk_band,
-        "escalation_state": escalation_state,
-        "ui_mode": worst_ui_mode if violations else None,
-        "message": worst_message if violations else None,
-        "requires_acknowledgement": req_ack if violations else False,
+        "violations": triggered_violations,
+        "ui_mode": worst_ui_mode if triggered_violations else None,
+        "message": worst_message if triggered_violations else None,
+        "requires_acknowledgement": req_ack if triggered_violations else False,
         "event_record": result,
     }
 
+    if severity_payload:
+        response["severity_engine"] = severity_payload
+        response["risk_band"] = severity_payload.get("risk_band")
+        from ai_apps.api.proctor_api.severity_engine import get_escalation_state
+        response["escalation_state"] = get_escalation_state(session)
+
+    return response
+
+
+def _run_severity_pipeline(session, engine, triggered_violations, event_type, payload, event_payload):
+    """Run the threshold + severity engine pipeline.
+    
+    Returns the updated risk payload.
+    """
+    from ai_apps.api.proctor_api.threshold_engine import process_raw_signal
+    from ai_apps.api.proctor_api.severity_engine import process_violation, compute_risk_value
+    from ai_apps.api.proctor_api.confidence_map import resolve_confidence
+
+    now_ms = int(time.time() * 1000)
+
+    # Find the matching rule from the loaded rule list
+    matching_rule = None
+    for rule in engine._rules:
+        if rule.event_type == event_type or rule.rule_id == event_type:
+            matching_rule = rule
+            break
+
+    if matching_rule is None:
+        return compute_risk_value(session)
+
+    # Determine raw_state for threshold engine
+    raw_state = "triggered"
+
+    # Resolve confidence — use the raw float from payload if provided
+    raw_conf = float(event_payload.get("confidence_score") or 1.0)
+    confidence = resolve_confidence(matching_rule.rule_id, raw_conf)
+
+    def _on_violation(rule, sid, conf, ts_ms):
+        """Callback fired by threshold_engine when threshold is met."""
+        process_violation(sid, rule, conf, ts_ms)
+        triggered_violations.append({
+            "rule_id": rule.rule_id,
+            "severity": (rule.severity_tier or "LOW").upper(),
+            "ui_mode": "toast",
+            "message": f"Violation: {rule.rule_id}",
+            "requires_acknowledgement": False,
+        })
+
+    # Process through the pipeline if the rule has new-style fields
+    if matching_rule.threshold_type:
+        process_raw_signal(
+            session_id=session,
+            rule=matching_rule,
+            raw_state=raw_state,
+            confidence=confidence,
+            timestamp_ms=now_ms,
+            on_violation=_on_violation,
+        )
+
+    return compute_risk_value(session)

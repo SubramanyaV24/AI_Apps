@@ -11,10 +11,18 @@ function formatViolationType(type) {
 }
 
 function sortEventsChronologically(events = []) {
+  const parseTime = (val) => {
+    if (!val) return 0;
+    let d = new Date(val);
+    if (!isNaN(d.getTime())) return d.getTime();
+    d = new Date(`1970/01/01 ${val}`);
+    if (!isNaN(d.getTime())) return d.getTime();
+    return 0;
+  };
   return [...events].sort((a, b) => {
-    const ta = new Date(a.timestamp || a.occurredAt || 0).getTime()
-    const tb = new Date(b.timestamp || b.occurredAt || 0).getTime()
-    return tb - ta
+    const ta = parseTime(a.timestamp || a.occurredAt);
+    const tb = parseTime(b.timestamp || b.occurredAt);
+    return tb - ta;
   })
 }
 
@@ -67,9 +75,12 @@ export function downloadSessionReportCSV(report) {
     ['Low Risk', report.severityCounts?.low ?? 0],
     [],
     ['System Analysis'],
+    ['Mobile Phone', report.counters?.mobilePhone ?? 0],
     ['Tab Switches', report.counters?.tabSwitched ?? 0],
     ['Face Missing', report.counters?.noFace ?? 0],
     ['Multiple Faces', report.counters?.multipleFaces ?? 0],
+    ['Face Covered', report.counters?.faceCovered ?? 0],
+    ['Looking Away', report.counters?.gazeAway ?? 0],
     ['Noise Events', report.counters?.noise ?? 0],
     ['External Monitor', report.counters?.multipleMonitors ?? 0],
     [],
@@ -186,9 +197,12 @@ export function downloadSessionReportPDF(report) {
   labelValue('Total Events', String(events.length))
 
   sectionTitle('System Analysis Overview')
+  labelValue('Mobile Phone', String(report.counters?.mobilePhone ?? 0))
   labelValue('Tab Switches', String(report.counters?.tabSwitched ?? 0))
   labelValue('Face Missing', String(report.counters?.noFace ?? 0))
   labelValue('Multiple Faces', String(report.counters?.multipleFaces ?? 0))
+  labelValue('Face Covered', String(report.counters?.faceCovered ?? 0))
+  labelValue('Looking Away', String(report.counters?.gazeAway ?? 0))
   labelValue('Noise Events', String(report.counters?.noise ?? 0))
   labelValue('External Monitor', String(report.counters?.multipleMonitors ?? 0))
 

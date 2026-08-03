@@ -53,22 +53,48 @@ class Rule:
     event_type: str
     enabled: bool
     condition: Condition
-    severity: str  # "LOW", "MEDIUM", "HIGH"
+    severity: str  # "LOW", "MEDIUM", "HIGH", "CRITICAL" — legacy field
     penalty_points: int
     cooldown_ms: int
+
+    # ── Severity Engine fields (Phase 1 / new) ────────────────────────────────
+    # severity_tier: input anchor tier for the severity engine.
+    #   Values: "Low", "Medium", "High", "Critical" (Title-case, from DocType Select)
+    severity_tier: str = ""
+    # threshold_type: how raw ML signals are gated before reaching the severity engine.
+    #   Values: "Instant", "Duration", "Frequency"
+    #   Falls back to condition_type (legacy) if not set.
+    threshold_type: str = ""
+    # duration_ms: cumulative signal ms required to fire (Duration rules only)
+    duration_ms: Optional[int] = None
+    # frequency_count: occurrences within window required to fire (Frequency rules only)
+    frequency_count: Optional[int] = None
+    # frequency_window_ms: sliding window for frequency counting (Frequency rules only)
+    frequency_window_ms: Optional[int] = None
+    # reset_on_clear: if True, the accumulator resets after a violation fires.
+    #   Set False for cumulative rules like lookingAway.
+    reset_on_clear: bool = True
+    # correlation_window_ms: override for per-rule correlation window (0 = use engine default)
+    correlation_window_ms: int = 0
 
     @staticmethod
     def from_dict(d: Dict[str, Any]) -> "Rule":
         """Create a Rule instance from a dictionary.
-        Handles both the original JSON schema (with a nested ``condition`` dict)
-        and the ERPNext API shape where condition fields are top‑level.
+
+        Handles three input shapes:
+        1. Nested ``condition`` dict (original JSON schema)
+        2. Flat ERPNext API shape (legacy fields: condition_type, threshold_ms, etc.)
+        3. Flat ERPNext API shape with new severity engine fields (threshold_type, etc.)
+
+        New fields fall back gracefully when absent so existing DB records continue
+        to work without migration.
         """
         frappe.logger().info(f"[Rule.from_dict] Received dict: {d}")
-        # --- Condition handling ---
+
+        # --- Legacy Condition handling (backward compat) ----------------------
         if "condition" in d and isinstance(d["condition"], dict):
             cond_data = d["condition"]
         else:
-            # Build a condition dict from the flat fields present in the ERPNext response
             cond_data = {
                 "type": d.get("condition_type", "threshold"),
                 "threshold": d.get("threshold_ms") or d.get("threshold"),
@@ -84,8 +110,42 @@ class Rule:
             count=safe_numeric(cond_data.get("count")),
             pattern_expression=cond_data.get("pattern_expression"),
         )
-        frappe.logger().info(f"[Rule.from_dict] Created condition: type={condition.type}, threshold={condition.threshold}, window_ms={condition.window_ms}, count={condition.count}, pattern_expression={condition.pattern_expression}")
-        # --- Core rule fields -----
+        frappe.logger().info(
+            f"[Rule.from_dict] Created condition: type={condition.type}, "
+            f"threshold={condition.threshold}, window_ms={condition.window_ms}, "
+            f"count={condition.count}, pattern_expression={condition.pattern_expression}"
+        )
+
+        # --- New severity engine fields (with safe defaults) ------------------
+        # threshold_type: prefer new field, fall back to capitalised condition_type
+        raw_threshold_type = d.get("threshold_type") or ""
+        if not raw_threshold_type or raw_threshold_type == "Select an option":
+            # Map legacy condition_type → threshold_type
+            _legacy_map = {
+                "threshold": "Instant",
+                "duration": "Duration",
+                "frequency": "Frequency",
+                "pattern": "Frequency",  # closest semantic equivalent
+            }
+            raw_threshold_type = _legacy_map.get(
+                (d.get("condition_type") or "").lower(), ""
+            )
+
+        severity_tier = d.get("severity_tier") or ""
+        if severity_tier == "Select an option":
+            severity_tier = ""
+
+        # reset_on_clear: DB stores as 0/1 (Check field)
+        reset_val = d.get("reset_on_clear")
+        if reset_val is None:
+            reset_on_clear = True  # safe default
+        else:
+            reset_on_clear = bool(reset_val)
+
+        # correlation_window_ms: rule-level override; 0 means use engine default
+        correlation_window_ms = safe_numeric(d.get("correlation_window_ms")) or 0
+
+        # --- Core rule fields -------------------------------------------------
         return Rule(
             rule_id=d.get("ruleId") or d.get("rule_id") or d.get("rule_name"),
             event_type=d.get("eventType") or d.get("event_type") or d.get("rule_name") or d.get("condition_type") or "UNKNOWN",
@@ -94,6 +154,14 @@ class Rule:
             severity=(d.get("severity") or "LOW").upper(),
             penalty_points=safe_numeric(d.get("penaltyPoints") or d.get("penalty_points")) or 0,
             cooldown_ms=safe_numeric(d.get("cooldownMs") or d.get("cooldown_ms")) or 0,
+            # new severity engine fields
+            severity_tier=severity_tier,
+            threshold_type=raw_threshold_type,
+            duration_ms=safe_numeric(d.get("duration_ms")),
+            frequency_count=safe_numeric(d.get("frequency_count")),
+            frequency_window_ms=safe_numeric(d.get("frequency_window_ms")),
+            reset_on_clear=reset_on_clear,
+            correlation_window_ms=int(correlation_window_ms),
         )
 
 
@@ -456,7 +524,10 @@ class RuleEngine:
             "AUDIO_VAD": "Multiple voices or sustained background noise detected.",
             "NOISE": "Background noise detected.",
             "MULTIPLE_MONITORS": "Multiple monitors detected.",
-            "SPLIT_SCREEN": "Browser window is not properly maximized."
+            "SPLIT_SCREEN": "Browser window is not properly maximized.",
+            "CAMERA_DISABLED": "Webcam has been muted or disabled at the OS/hardware level.",
+            "MIC_DISABLED": "Microphone has been muted or disabled at the OS/hardware level.",
+            "FULLSCREEN_EXITED": "You exited fullscreen mode. Please remain in fullscreen mode during the test."
         }
         msg = base_msgs.get(rule.event_type, f"{rule.event_type} detected.")
         
@@ -468,7 +539,7 @@ class RuleEngine:
             ui_mode = "toast"
             req_ack = False
             # Elevate specific critical rules immediately to banner
-            if rule.event_type in ["MOBILE_PHONE", "MULTIPLE_PEOPLE", "TAB_SWITCHED", "SPLIT_SCREEN"]:
+            if rule.event_type in ["MOBILE_PHONE", "MULTIPLE_PEOPLE", "TAB_SWITCHED", "SPLIT_SCREEN", "CAMERA_DISABLED", "MIC_DISABLED", "FULLSCREEN_EXITED"]:
                 ui_mode = "warning_banner"
         elif count <= 3:
             ui_mode = "warning_banner"

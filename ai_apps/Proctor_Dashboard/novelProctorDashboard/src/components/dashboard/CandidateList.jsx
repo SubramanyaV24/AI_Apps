@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Filter, Loader2, Search, SlidersHorizontal, X, ChevronLeft, ChevronRight } from "lucide-react"
+import { Filter, Loader2, Search, SlidersHorizontal, X, ChevronLeft, ChevronRight, Hash } from "lucide-react"
 import { Card } from "../ui/card"
 import { Badge } from "../ui/badge"
 import { Checkbox } from "../ui/checkbox"
 import { Slider } from "../ui/slider"
-import { getTrustBadgeClass } from "../../lib/eventSeverity"
+import { DatePicker } from "../ui/date-picker"
+import { getTrustLabel } from "../../lib/eventSeverity"
 import { filterSessions, getTotalCandidates } from "../../api/Proctor_Dashboard_Session_Api"
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -20,16 +21,32 @@ const DEFAULT_FILTERS = {
   riskLevels: [],
   trustMin: 0,
   trustMax: 100,
+  dateFrom: "",
+  dateTo: "",
 }
 
 function isLiveSession(status) {
   return status === "STARTED" || status === "IN_PROGRESS"
 }
 
+/** Format a date string as "Jan 1, 2024" */
+function formatDate(dateStr) {
+  if (!dateStr) return ""
+  try {
+    return new Date(dateStr).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    })
+  } catch {
+    return ""
+  }
+}
+
 // ─── Filter Popover ───────────────────────────────────────────────────────────
 
 function FilterPopover({ filters, onChange, onReset, onClose }) {
-  const { riskLevels, trustMin, trustMax } = filters
+  const { riskLevels, trustMin, trustMax, dateFrom, dateTo } = filters
 
   const toggleRisk = (val) => {
     const next = riskLevels.includes(val)
@@ -38,7 +55,10 @@ function FilterPopover({ filters, onChange, onReset, onClose }) {
     onChange({ ...filters, riskLevels: next })
   }
 
-  const activeCount = riskLevels.length + (trustMin > 0 || trustMax < 100 ? 1 : 0)
+  const activeCount =
+    riskLevels.length +
+    (trustMin > 0 || trustMax < 100 ? 1 : 0) +
+    (dateFrom || dateTo ? 1 : 0)
 
   return (
     <div className="absolute right-0 top-10 z-50 w-64 rounded-xl border border-white/10 bg-[#1a1a1a] p-4 shadow-2xl">
@@ -87,7 +107,7 @@ function FilterPopover({ filters, onChange, onReset, onClose }) {
       </div>
 
       {/* Trust Score range */}
-      <p className="mb-1 mt-6 text-[10px] font-bold uppercase tracking-widest text-[#666]">Risk Rate</p>
+      <p className="mb-1 mt-2 text-[10px] font-bold uppercase tracking-widest text-[#666]">Trust Score Range</p>
       <p className="text-xs font-semibold text-foreground mb-4">
         {trustMin}% – {trustMax}%
       </p>
@@ -97,6 +117,27 @@ function FilterPopover({ filters, onChange, onReset, onClose }) {
         value={[trustMin, trustMax]}
         onValueChange={([lo, hi]) => onChange({ ...filters, trustMin: lo, trustMax: hi })}
       />
+
+      {/* Date Range */}
+      <p className="mb-2 mt-6 text-[10px] font-bold uppercase tracking-widest text-[#666]">Test Date Range</p>
+      <div className="flex flex-col gap-2">
+        <div>
+          <label className="mb-1 block text-[10px] text-[#888]">From</label>
+          <DatePicker
+            value={dateFrom}
+            onChange={(val) => onChange({ ...filters, dateFrom: val })}
+            placeholder="Select start date"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-[10px] text-[#888]">To</label>
+          <DatePicker
+            value={dateTo}
+            onChange={(val) => onChange({ ...filters, dateTo: val })}
+            placeholder="Select end date"
+          />
+        </div>
+      </div>
     </div>
   )
 }
@@ -107,6 +148,7 @@ export function CandidateList({
   sessions: propSessions,
   selectedSessionId,
   onSelectSession,
+  selectedSessionTrustScore,
 }) {
   const [search, setSearch] = useState("")
   const [filterOpen, setFilterOpen] = useState(false)
@@ -127,6 +169,7 @@ export function CandidateList({
   const activeFilters = useMemo(() => {
     let n = filters.riskLevels.length
     if (filters.trustMin > 0 || filters.trustMax < 100) n++
+    if (filters.dateFrom || filters.dateTo) n++
     return n
   }, [filters])
 
@@ -152,7 +195,12 @@ export function CandidateList({
   useEffect(() => {
     if (!filterOpen) return
     const handle = (e) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target)) {
+      // Don't close if clicking inside the Filter panel OR inside a DatePicker portal
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(e.target) &&
+        !e.target.closest('.date-picker-content')
+      ) {
         setFilterOpen(false)
       }
     }
@@ -173,6 +221,8 @@ export function CandidateList({
         riskLevels: f.riskLevels,
         trustMin: f.trustMin,
         trustMax: f.trustMax,
+        dateFrom: f.dateFrom,
+        dateTo: f.dateTo,
         page: p,
         limit: 25,
       })
@@ -246,12 +296,12 @@ export function CandidateList({
       {/* ── Search + Filter bar ── */}
       <div className="shrink-0 border-b border-white/10 p-3 pt-4">
         <div className="flex items-center gap-2">
-          {/* Search */}
+          {/* Search — accepts name, email, or ATS ID */}
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#555]" />
             <input
               type="text"
-              placeholder="Search candidate…"
+              placeholder="Search name, email, or ATS ID…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-8 pr-3 text-sm text-foreground transition-all focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder:text-[#555]"
@@ -318,6 +368,22 @@ export function CandidateList({
                 </button>
               </span>
             )}
+            {(filters.dateFrom || filters.dateTo) && (
+              <span className="flex items-center gap-1 rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-semibold text-blue-300">
+                {filters.dateFrom && filters.dateTo
+                  ? `${filters.dateFrom} – ${filters.dateTo}`
+                  : filters.dateFrom
+                  ? `From ${filters.dateFrom}`
+                  : `To ${filters.dateTo}`}
+                <button
+                  type="button"
+                  onClick={() => setFilters((f) => ({ ...f, dateFrom: "", dateTo: "" }))}
+                  className="hover:text-white"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -333,10 +399,14 @@ export function CandidateList({
           <div className="py-10 text-center text-sm text-[#555]">No candidates found.</div>
         ) : (
           sessions.map((session) => {
-            const trust = session.trust_score ?? 100
             const isSelected = selectedSessionId === session.name
-            const badgeColor = getTrustBadgeClass(trust)
+            const trust = isSelected && selectedSessionTrustScore == null
+              ? null
+              : (isSelected ? selectedSessionTrustScore : Math.round(100 - (session.risk_value ?? 0)))
+            const { color: badgeColor } = getTrustLabel(trust === null ? 0 : trust)
             const live = isLiveSession(session.status)
+            const testDate = formatDate(session.creation)
+            const atsId = session.entity_id
 
             return (
               <button
@@ -352,9 +422,29 @@ export function CandidateList({
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
                     {session.user_name || session.user_id || "Unknown"}
                   </span>
-                  <Badge variant="outline" className={`shrink-0 font-mono text-[10px] ${badgeColor}`}>
-                    {trust}% Trust
-                  </Badge>
+                  <div
+                    className="shrink-0 font-mono text-[10px] inline-flex items-center rounded-full border px-2.5 py-0.5 font-semibold"
+                    style={{
+                      backgroundColor: `${badgeColor}26`,
+                      color: badgeColor,
+                      borderColor: `${badgeColor}40`,
+                    }}
+                  >
+                    {trust === null ? '--' : trust}% Trust
+                  </div>
+                </div>
+
+                {/* ATS ID + test date sub-row */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {atsId && (
+                    <span className="flex items-center gap-0.5 text-[10px] text-blue-400 font-mono">
+                      <Hash className="h-2.5 w-2.5" />
+                      {atsId}
+                    </span>
+                  )}
+                  {testDate && (
+                    <span className="text-[10px] text-[#555]">{testDate}</span>
+                  )}
                 </div>
 
                 {/* Sub-row: live indicator or violation count */}
@@ -365,9 +455,9 @@ export function CandidateList({
                       Live
                     </span>
                   )}
-                  {session.violation_count > 0 && (
+                  {session.total_events > 0 && (
                     <span className="text-[10px] text-[#666]">
-                      {session.violation_count} violation{session.violation_count !== 1 ? "s" : ""}
+                      {session.total_events} violation{session.total_events !== 1 ? "s" : ""}
                     </span>
                   )}
                 </div>

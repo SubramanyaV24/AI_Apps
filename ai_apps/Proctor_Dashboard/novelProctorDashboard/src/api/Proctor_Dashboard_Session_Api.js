@@ -57,11 +57,13 @@ export async function getTotalCandidates() {
  * Filter and paginate Proctor Sessions using the candidate_filter service.
  *
  * @param {Object} opts
- * @param {string}   [opts.query]       - Free-text search (name / email)
+ * @param {string}   [opts.query]       - Free-text search (name / email / ATS ID)
  * @param {string[]} [opts.riskLevels]  - e.g. ["HIGH","MEDIUM"]
  * @param {number}   [opts.trustMin]    - Minimum trust score (0-100)
  * @param {number}   [opts.trustMax]    - Maximum trust score (0-100)
  * @param {string[]} [opts.status]      - e.g. ["ENDED"]
+ * @param {string}   [opts.dateFrom]    - ISO date string inclusive start, e.g. "2024-01-01"
+ * @param {string}   [opts.dateTo]      - ISO date string inclusive end, e.g. "2024-12-31"
  * @param {number}   [opts.page]        - 1-based page number
  * @param {number}   [opts.limit]       - Items per page (max 100)
  * @returns {Promise<Object>} { sessions, page, limit, total, total_pages }
@@ -72,6 +74,8 @@ export async function filterSessions({
   trustMin = 0,
   trustMax = 100,
   status = [],
+  dateFrom = '',
+  dateTo = '',
   page = 1,
   limit = 25,
 } = {}) {
@@ -83,6 +87,8 @@ export async function filterSessions({
       trust_min: trustMin,
       trust_max: trustMax,
       status: JSON.stringify(status),
+      date_from: dateFrom,
+      date_to: dateTo,
       page,
       limit,
     }
