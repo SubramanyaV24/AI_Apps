@@ -2,7 +2,7 @@ import frappe
 from ai_apps.ai_screening.frappe_integration import enqueue_ai_screening, _resolve_audio_path
 import os
 
-BATCH_SIZE = 150
+BATCH_SIZE = 100
 
 def main():
     docs = frappe.get_all(
@@ -39,11 +39,11 @@ def main():
         if not frappe.db.exists("Candidates", atsid):
             continue
             
-        # 4. Target ONLY already processed candidates for re-evaluation
+        # 4. Target ONLY UNPROCESSED candidates
         ai_remarks = frappe.db.get_value("Candidates", atsid, "ai_remarks")
-        if not ai_remarks:
+        if ai_remarks:
+            already_processed_count += 1
             continue
-        already_processed_count += 1
             
         # 5. Enqueue!
         try:

@@ -10,9 +10,10 @@ import threading
 logger = logging.getLogger(__name__)
 
 # Reusing LLM config
-OLLAMA_BASE_URL = "https://oma.novelinfra.com"
-OLLAMA_MODEL = "gpt-oss:120b-cloud"
-FALLBACK_MODEL = "qwen3-next:80b-cloud"
+LLM_BASE_URL = "https://oma.novelinfra.com"
+LLM_API_KEY = "sk-8TgQCpFTeZfci4fPt0oufw"
+LLM_MODEL = "gpt-oss-120b-cloud"
+FALLBACK_MODEL = "qwen3-next-80b-cloud"
 MAX_RETRIES = 2
 TIMEOUT = 30
 
@@ -135,31 +136,32 @@ Years of Experience: <inferred total years>
 Do NOT output anything else. If a section is missing, put 'Not specified'."""
 
     payload = {
-        "model": OLLAMA_MODEL,
+        "model": LLM_MODEL,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"Resume Text:\n\n{raw_text}"},
         ],
-        "stream": False,
-        "options": {
-            "temperature": 0.1,
-            "top_p": 0.9,
-            "seed": 42,
-        },
+        "temperature": 0.1,
+        "top_p": 0.9,
+        "seed": 42,
     }
 
-    url = f"{OLLAMA_BASE_URL}/api/chat"
+    url = f"{LLM_BASE_URL}/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {LLM_API_KEY}",
+        "Content-Type": "application/json"
+    }
     
     for attempt in range(1, MAX_RETRIES + 1):
-        current_model = OLLAMA_MODEL if attempt == 1 else FALLBACK_MODEL
+        current_model = LLM_MODEL if attempt == 1 else FALLBACK_MODEL
         if attempt > 1:
             payload["model"] = current_model
 
         try:
-            response = requests.post(url, json=payload, timeout=TIMEOUT)
+            response = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
             response.raise_for_status()
             data = response.json()
-            content = data.get("message", {}).get("content", "")
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
             if content:
                 return content.strip()
         except Exception as e:

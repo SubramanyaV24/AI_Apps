@@ -30,13 +30,26 @@ class ProctorAPIClient {
      */
     async _frappePost(path, data = {}) {
         const url = `${this.frappeBaseUrl}${path}`;
+        const headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        };
+
+        let token = null;
+        if (typeof frappe !== 'undefined' && frappe.csrf_token && frappe.csrf_token !== "None") {
+            token = frappe.csrf_token;
+        } else if (typeof window !== 'undefined' && window.csrf_token && window.csrf_token !== "None") {
+            token = window.csrf_token;
+        }
+
+        if (token) {
+            headers["X-Frappe-CSRF-Token"] = token;
+        }
+
         const response = await fetch(url, {
             method: "POST",
             credentials: "include",
-            headers: {
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
+            headers: headers,
             body: JSON.stringify(data),
         });
 

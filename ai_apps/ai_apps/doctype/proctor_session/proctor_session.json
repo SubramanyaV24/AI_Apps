@@ -1,6 +1,7 @@
 {
  "actions": [],
  "allow_rename": 1,
+ "autoname": "PS.######",
  "creation": "2026-05-22 11:34:55.921369",
  "default_view": "List",
  "doctype": "DocType",
@@ -141,10 +142,11 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-24 17:48:25.006853",
+ "modified": "2026-08-04 16:18:24.859015",
  "modified_by": "Administrator",
  "module": "Ai Apps",
  "name": "Proctor Session",
+ "naming_rule": "Expression",
  "owner": "Administrator",
  "permissions": [
   {
@@ -160,6 +162,7 @@
    "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],

@@ -1,6 +1,7 @@
 {
  "actions": [],
  "allow_rename": 1,
+ "autoname": "PE.######",
  "creation": "2026-05-22 12:09:10.590090",
  "default_view": "List",
  "doctype": "DocType",
@@ -68,10 +69,11 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-23 13:52:15.021568",
+ "modified": "2026-08-04 16:19:36.851553",
  "modified_by": "Administrator",
  "module": "Ai Apps",
  "name": "Proctor Evidence",
+ "naming_rule": "Expression",
  "owner": "Administrator",
  "permissions": [
   {
@@ -87,6 +89,7 @@
    "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": []

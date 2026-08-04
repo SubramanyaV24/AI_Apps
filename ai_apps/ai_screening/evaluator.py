@@ -21,10 +21,11 @@ from utils import detect_transcription_uncertainty
 
 logger = logging.getLogger(__name__)
 
-# ── Ollama endpoint configuration ───────────────────────────────────────────
-OLLAMA_BASE_URL = "https://oma.novelinfra.com"
-OLLAMA_MODEL = "glm-5.1:cloud"
-FALLBACK_MODEL = "gpt-oss:120b-cloud"
+# ── LLM endpoint configuration ──────────────────────────────────────────────
+LLM_BASE_URL = "https://oma.novelinfra.com"
+LLM_API_KEY = "sk-8TgQCpFTeZfci4fPt0oufw"
+LLM_MODEL = "glm-5.1-cloud"
+FALLBACK_MODEL = "gpt-oss-120b-cloud"
 TEMPERATURE = 0.1
 MAX_RETRIES = 2          # 1 initial attempt + 1 retry (now using fallback)
 TIMEOUT = 30             # 30 seconds timeout
@@ -619,18 +620,19 @@ def evaluate_tags(
             {"role": "system", "content": TAG_SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        "stream": False,
-        "options": {
-            "temperature": 0.2,   # more deterministic for classification
-            "top_p": 0.9,
-            "seed": 42,
-        },
+        "temperature": 0.2,   # more deterministic for classification
+        "top_p": 0.9,
+        "seed": 42,
     }
 
-    url = f"{OLLAMA_BASE_URL}/api/chat"
+    url = f"{LLM_BASE_URL}/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {LLM_API_KEY}",
+        "Content-Type": "application/json"
+    }
 
     for attempt in range(1, MAX_RETRIES + 1):
-        current_model = OLLAMA_MODEL if attempt == 1 else FALLBACK_MODEL
+        current_model = LLM_MODEL if attempt == 1 else FALLBACK_MODEL
         payload["model"] = current_model
         if attempt > 1:
             logger.info("evaluate_tags: switching to fallback model %s", current_model)
@@ -638,10 +640,11 @@ def evaluate_tags(
         logger.info("Tag evaluation attempt %d/%d with model %s…", attempt, MAX_RETRIES, current_model)
 
         try:
-            response = requests.post(url, json=payload, timeout=TIMEOUT)
+            response = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
             response.raise_for_status()
 
-            raw_content = response.json().get("message", {}).get("content", "")
+            data = response.json()
+            raw_content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
             if not raw_content:
                 logger.warning("evaluate_tags: empty response (attempt %d).", attempt)
                 continue
@@ -726,20 +729,21 @@ def evaluate_candidate(
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        "stream": False,
-        "options": {
-            "temperature": TEMPERATURE,
-            "top_p": 0.9,
-            "repeat_penalty": 1.1,
-            "seed": 42,
-        },
+        "temperature": TEMPERATURE,
+        "top_p": 0.9,
+        "frequency_penalty": 0.1,
+        "seed": 42,
     }
 
-    url = f"{OLLAMA_BASE_URL}/api/chat"
+    url = f"{LLM_BASE_URL}/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {LLM_API_KEY}",
+        "Content-Type": "application/json"
+    }
 
     for attempt in range(1, MAX_RETRIES + 1):
         # Switch to fallback model on retry
-        current_model = OLLAMA_MODEL if attempt == 1 else FALLBACK_MODEL
+        current_model = LLM_MODEL if attempt == 1 else FALLBACK_MODEL
         if attempt > 1:
             logger.info("Using fallback model: %s", current_model)
 
@@ -749,11 +753,11 @@ def evaluate_candidate(
         payload["model"] = current_model
 
         try:
-            response = requests.post(url, json=payload, timeout=TIMEOUT)
+            response = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
             response.raise_for_status()
 
             data = response.json()
-            raw_content = data.get("message", {}).get("content", "")
+            raw_content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
 
             if not raw_content:
                 logger.warning("Empty LLM response on attempt %d.", attempt)
@@ -907,24 +911,25 @@ def format_output(
     )
 
     payload = {
-        "model": OLLAMA_MODEL,
+        "model": LLM_MODEL,
         "messages": [
             {"role": "system", "content": REMARKS_SYSTEM_PROMPT},
             {"role": "user", "content": f"Candidate Evaluation Summary:\n\n{context}"},
         ],
-        "stream": False,
-        "options": {
-            "temperature": 0.3,
-            "top_p": 0.9,
-            "seed": 42,
-        },
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "seed": 42,
     }
 
-    url = f"{OLLAMA_BASE_URL}/api/chat"
+    url = f"{LLM_BASE_URL}/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {LLM_API_KEY}",
+        "Content-Type": "application/json"
+    }
     VALID_PRIORITIES = {"P1", "P2", "P3", "P4", "P5"}
 
     for attempt in range(1, MAX_RETRIES + 1):
-        current_model = OLLAMA_MODEL if attempt == 1 else FALLBACK_MODEL
+        current_model = LLM_MODEL if attempt == 1 else FALLBACK_MODEL
         if attempt > 1:
             payload["model"] = current_model
             logger.info("format_output: switching to fallback model %s", current_model)
@@ -932,11 +937,11 @@ def format_output(
         logger.info("format_output: attempt %d/%d with model %s…", attempt, MAX_RETRIES, current_model)
 
         try:
-            response = requests.post(url, json=payload, timeout=TIMEOUT)
+            response = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
             response.raise_for_status()
 
             data = response.json()
-            raw_content = data.get("message", {}).get("content", "")
+            raw_content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
 
             if not raw_content:
                 logger.warning("format_output: empty LLM response (attempt %d).", attempt)
