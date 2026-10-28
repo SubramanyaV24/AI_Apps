@@ -130,12 +130,7 @@ app_license = "MIT"
 scheduler_events = {
     "daily": [
         "ai_apps.api.proctor_api.delete_old_evidence.delete_expired_evidence"
-    ],
-    "cron": {
-        "0 23 * * *": [
-            "ai_apps.ai_screening.frappe_integration.daily_ai_screening_batch"
-        ]
-    }
+    ]
 }
 
 # scheduler_events = {
