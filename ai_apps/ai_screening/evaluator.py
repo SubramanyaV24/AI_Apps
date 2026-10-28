@@ -13,19 +13,29 @@ Key design choices:
 
 import json
 import logging
+import os
 import re
 
 import requests
 
-from utils import detect_transcription_uncertainty
+try:
+    from utils import detect_transcription_uncertainty
+except ImportError:
+    from ai_apps.ai_screening.utils import detect_transcription_uncertainty
 
 logger = logging.getLogger(__name__)
 
 # ── LLM endpoint configuration ──────────────────────────────────────────────
-LLM_BASE_URL = "https://oma.novelinfra.com"
-LLM_API_KEY = "sk-8TgQCpFTeZfci4fPt0oufw"
-LLM_MODEL = "glm-5.1-cloud"
-FALLBACK_MODEL = "gpt-oss-120b-cloud"
+try:
+    import frappe
+    _site_config = frappe.get_site_config()
+except ImportError:
+    _site_config = {}
+
+LLM_BASE_URL = _site_config.get("llm_base_url") or os.getenv("LLM_BASE_URL", "https://oma.novelinfra.com")
+LLM_API_KEY = _site_config.get("llm_api_key") or os.getenv("LLM_API_KEY")
+LLM_MODEL = _site_config.get("llm_model") or os.getenv("LLM_MODEL", "glm-5.2-cloud")
+FALLBACK_MODEL = _site_config.get("llm_fallback_model") or os.getenv("LLM_FALLBACK_MODEL", "glm-5.2-cloud")
 TEMPERATURE = 0.1
 MAX_RETRIES = 2          # 1 initial attempt + 1 retry (now using fallback)
 TIMEOUT = 30             # 30 seconds timeout
@@ -221,6 +231,19 @@ REASONING REQUIREMENT
 - If uncertainty exists due to audio, state: "Some parts appear unclear, possibly due to audio quality."
 
 
+ACCENT & MOTHER TONGUE INFLUENCE (MTI) DETECTION
+
+Evaluate the candidate's spoken accent and the influence of their native mother tongue (MTI):
+- "accent": Identify the specific accent (e.g. "Indian English (South Indian)", "Indian English (North Indian)", "Indian English (Neutral)", "Neutral / Global English", "American English", "British English").
+- "mother_tongue_influence": A concise explanation in MAXIMUM 140 CHARACTERS explaining how mother tongue influence affects their spoken delivery, phonetics, intonation, or pacing.
+  CRITICAL: Must strictly be ≤ 140 characters.
+- "mother_tongue_influence_percentage": An estimated percentage rating of MTI intensity (e.g. "15%", "35%", "55%"):
+  * 0%–15%: Negligible / Neutral English (minimal to no regional phonetics)
+  * 16%–35%: Mild MTI (clear, easy to follow, subtle regional cadence)
+  * 36%–60%: Moderate MTI (noticeable regional inflection or pronunciation, good intelligibility)
+  * 61%–100%: Heavy MTI (strong regional accent, noticeable pronunciation shifts)
+
+
 OUTPUT FORMAT (JSON ONLY — no markdown, no preamble)
 
 {
@@ -234,7 +257,10 @@ OUTPUT FORMAT (JSON ONLY — no markdown, no preamble)
   "final_score": float,
   "decision": "Reject | Consider | Needs Human Review",
   "reason": "...",
-  "evaluation_confidence": "low | medium | high"
+  "evaluation_confidence": "low | medium | high",
+  "accent": "...",
+  "mother_tongue_influence": "... (max 140 chars)",
+  "mother_tongue_influence_percentage": "XX%"
 }"""
 
 #---
@@ -402,6 +428,20 @@ def _validate_result(result: dict) -> bool:
     Validate the structure of the LLM evaluation result.
     Returns True if the result has all required fields with correct types, including recruiter tag arrays.
     """
+    # Guarantee accent and MTI fields with strict 140 character limit
+    accent = str(result.get("accent") or "Indian (Neutral)").strip()
+    result["accent"] = accent[:140]
+
+    mti = str(result.get("mother_tongue_influence") or "Mild regional cadence with good overall intelligibility.").strip()
+    if len(mti) > 140:
+        mti = mti[:137] + "..."
+    result["mother_tongue_influence"] = mti
+
+    pct = str(result.get("mother_tongue_influence_percentage") or "20%").strip()
+    if not pct.endswith("%") and pct.isdigit():
+        pct = f"{pct}%"
+    result["mother_tongue_influence_percentage"] = pct
+
     if result.get("decision") == "Needs Human Review":
         return True
 
@@ -702,7 +742,10 @@ def evaluate_candidate(
             "final_score": 0,
             "decision": "Needs Human Review",
             "reason": "Candidate response too short to reliably evaluate. A human should review the original audio.",
-            "evaluation_confidence": "low"
+            "evaluation_confidence": "low",
+            "accent": "Unclear / Incomplete",
+            "mother_tongue_influence": "Audio too short to evaluate mother tongue influence.",
+            "mother_tongue_influence_percentage": "N/A",
         }
 
     # Handle Transcription Uncertainty (Fairness Override)
@@ -713,7 +756,10 @@ def evaluate_candidate(
             "final_score": 0,
             "decision": "Needs Human Review",
             "reason": "Potential transcription error detected (red-flag patterns found). Evaluation may be unreliable.",
-            "evaluation_confidence": "low"
+            "evaluation_confidence": "low",
+            "accent": "Unclear / Audio Artifacts",
+            "mother_tongue_influence": "Audio clarity uncertain; MTI could not be evaluated reliably.",
+            "mother_tongue_influence_percentage": "N/A",
         }
 
     if speech_features:
@@ -810,9 +856,27 @@ def evaluate_candidate(
 
 # ── Output Formatter ──────────────────────────────────────────────────────────
 
+def is_us_process_role(*role_strings) -> bool:
+    """
+    Check if any given role/position/JD strings indicate a US-process / US-facing voice role.
+    """
+    keywords = [
+        "us process", "bdm us", "us bdm", "us sales", "us shift",
+        "international voice", "us it recruiter", "us recruiter",
+        "us staffing", "us account", "us client", "(us", "- us", "us -"
+    ]
+    for r in role_strings:
+        if not r:
+            continue
+        r_lower = str(r).lower()
+        if any(k in r_lower for k in keywords):
+            return True
+    return False
+
+
 REMARKS_SYSTEM_PROMPT = """You are a senior HR evaluator writing a formal candidate screening note.
 
-You will receive a structured evaluation summary of a candidate (score, decision, confidence, and reasoning).
+You will receive a structured evaluation summary of a candidate (score, decision, confidence, reasoning, applied_role, accent, and mother tongue influence).
 Your task: write a cohesive, professional HR screening paragraph and assign a priority tier.
 OUTPUT FORMAT (strict JSON only — no markdown, no explanation, no preamble):
 {
@@ -832,8 +896,25 @@ STRUCTURE (follow this order):
 1. Brief candidate profile summary (education, experience level — inferred from reason)
 2. Key strengths (communication, relevance, skills demonstrated)
 3. Key concerns (gaps, delivery issues, uncertainty flags)
-4. Final decision insight (overall fit and readiness)
+4. Final decision insight (overall fit and readiness, including role-specific voice fit)
 5. FINAL LINE (mandatory): "Priority: PX — <short justification>"
+
+─────────────────────────────────────────
+ROLE-AWARE ACCENT & MTI PRIORITY ADJUSTMENT (CRITICAL)
+─────────────────────────────────────────
+Check if the candidate's applied role/position is US-process based (e.g., "BDM US", "Business Development Manager (US Process)", "International Voice Process", "US Sales", "US IT Recruiter", etc.):
+- IF APPLIED ROLE IS US PROCESS BASED:
+  Communication clarity, pronunciation, and accent intelligibility are decisive for client-facing conversions.
+  * Heavy / High MTI (≥ 45% or strong regional accent):
+    -> DECREASE priority by 1 tier (e.g. P1 → P2, P2 → P3, P3 → P4).
+    -> In remarks, explicitly state that the accent / elevated mother tongue influence (XX%) poses an intelligibility barrier for US client-facing calls.
+  * Low / Clean MTI (≤ 25%, neutral, global, or clear North American-friendly diction) with solid communication:
+    -> IMPROVE priority by 1 tier (e.g. P3 → P2, or P2 → P1).
+    -> In remarks, explicitly highlight that the clear accent and low mother tongue influence (XX%) provide strong voice suitability for US client calls.
+  * Moderate MTI (30%–40%):
+    -> Maintain baseline priority, noting cadence suitability for client interaction.
+- IF ROLE IS NOT US PROCESS BASED (domestic, technical, back-office):
+  * Do NOT penalize or boost priority based on accent/MTI as long as general intelligibility is acceptable.
 
 ─────────────────────────────────────────
 SCRIPT / AI DETECTION
@@ -874,13 +955,15 @@ def format_output(
     final_score: float,
     confidence: str,
     reason: str,
+    applied_role: str | None = None,
+    accent: str | None = None,
+    mother_tongue_influence: str | None = None,
+    mother_tongue_influence_percentage: str | None = None,
 ) -> dict | None:
     """
     Make a lightweight second LLM call to convert the raw evaluation into a
-    professional HR-grade remark and priority tier (P1–P5).
-
-    Only minimal evaluation context is sent — no transcript, no scores breakdown —
-    to keep cost and latency low and output consistent.
+    professional HR-grade remark and priority tier (P1–P5), taking into account
+    role-specific accent and mother tongue influence criteria.
 
     Parameters
     ----------
@@ -892,6 +975,14 @@ def format_output(
         Evaluation confidence level: "low", "medium", or "high".
     reason : str
         The original LLM evaluation reason/explanation text.
+    applied_role : str, optional
+        Target role applied for (e.g. "Business Development Manager (US Process)").
+    accent : str, optional
+        Detected accent name.
+    mother_tongue_influence : str, optional
+        Description of mother tongue influence.
+    mother_tongue_influence_percentage : str, optional
+        Percentage rating of MTI (e.g. "40%").
 
     Returns
     -------
@@ -900,15 +991,22 @@ def format_output(
     """
     import json as _json
 
-    context = _json.dumps(
-        {
-            "decision": decision,
-            "final_score": round(float(final_score or 0), 2),
-            "confidence": confidence,
-            "reason": reason,
-        },
-        indent=2,
-    )
+    context_dict = {
+        "decision": decision,
+        "final_score": round(float(final_score or 0), 2),
+        "confidence": confidence,
+        "reason": reason,
+    }
+    if applied_role:
+        context_dict["applied_role"] = applied_role
+    if accent:
+        context_dict["accent"] = accent
+    if mother_tongue_influence:
+        context_dict["mother_tongue_influence"] = mother_tongue_influence
+    if mother_tongue_influence_percentage:
+        context_dict["mother_tongue_influence_percentage"] = mother_tongue_influence_percentage
+
+    context = _json.dumps(context_dict, indent=2)
 
     payload = {
         "model": LLM_MODEL,
@@ -968,6 +1066,29 @@ def format_output(
             if not ai_remarks or not isinstance(ai_remarks, str):
                 logger.warning("format_output: missing or invalid ai_remarks (attempt %d).", attempt)
                 continue
+
+            # Deterministic enforcement for US Process roles
+            if is_us_process_role(applied_role):
+                try:
+                    pct_val = float(str(mother_tongue_influence_percentage or "").replace("%", "").strip())
+                except (ValueError, TypeError):
+                    pct_val = 30.0
+
+                p_order = ["P1", "P2", "P3", "P4", "P5"]
+                current_idx = p_order.index(ai_priority) if ai_priority in p_order else 2
+
+                if pct_val >= 45.0:
+                    # Downgrade by 1 tier if not already downgraded
+                    if current_idx < 3:
+                        ai_priority = p_order[current_idx + 1]
+                    if "US" not in ai_remarks and "accent" not in ai_remarks.lower() and "mother tongue" not in ai_remarks.lower():
+                        ai_remarks = ai_remarks.rstrip() + f" Regional mother tongue influence ({pct_val:.0f}%) presents an intelligibility consideration for a US-facing process."
+                elif pct_val <= 25.0 and decision == "Consider" and confidence == "high":
+                    # Upgrade by 1 tier
+                    if current_idx > 0 and current_idx <= 2:
+                        ai_priority = p_order[current_idx - 1]
+                    if "US" not in ai_remarks and "accent" not in ai_remarks.lower() and "mother tongue" not in ai_remarks.lower():
+                        ai_remarks = ai_remarks.rstrip() + f" Clear accent with minimal mother tongue influence ({pct_val:.0f}%) is well-suited for US client-facing calls."
 
             logger.info(
                 "format_output complete — Priority: %s | Remarks preview: %.80s",

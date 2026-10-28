@@ -88,7 +88,6 @@
    "label": "Review Required"
   },
   {
-   "description": "NORMAL / WATCHING / WARNING / ESCALATED / CRITICAL_REVIEW",
    "fieldname": "escalation_state",
    "fieldtype": "Data",
    "label": "Escalation State"
@@ -99,13 +98,11 @@
    "label": "Severity Engine Scoring (New)"
   },
   {
-   "description": "0\u2013100 additive risk score from severity engine (replaces trust_score post-cutover)",
    "fieldname": "risk_value",
    "fieldtype": "Float",
    "label": "Risk Value"
   },
   {
-   "description": "Derived from risk_value: \u226420=LOW, \u226445=MEDIUM, \u226470=HIGH, >70=CRITICAL",
    "fieldname": "risk_band",
    "fieldtype": "Select",
    "label": "Risk Band",
@@ -116,25 +113,21 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Highest effective severity value seen in this session \u2014 never decays",
    "fieldname": "severity_anchor",
    "fieldtype": "Float",
    "label": "Severity Anchor"
   },
   {
-   "description": "Rule ID that set the current severity anchor",
    "fieldname": "anchor_rule_id",
    "fieldtype": "Data",
    "label": "Anchor Rule ID"
   },
   {
-   "description": "Bonus points for repeated violations of the same rule (cap: 15)",
    "fieldname": "repeat_bonus",
    "fieldtype": "Float",
    "label": "Repeat Bonus"
   },
   {
-   "description": "Bonus points for co-occurring violations within the correlation window (cap: 20)",
    "fieldname": "correlation_bonus",
    "fieldtype": "Float",
    "label": "Correlation Bonus"
@@ -142,7 +135,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-04 16:18:24.859015",
+ "modified": "2026-08-11 10:34:01.597212",
  "modified_by": "Administrator",
  "module": "Ai Apps",
  "name": "Proctor Session",

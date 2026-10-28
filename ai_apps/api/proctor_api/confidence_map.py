@@ -33,7 +33,6 @@ _CONFIDENCE_SOURCE: Dict[str, Any] = {
     "NO_VIDEO":         lambda ctx: 1.0,
     "NO_AUDIO":         lambda ctx: 1.0,
     "MULTIPLE_MONITORS": lambda ctx: 1.0,
-    "SPLIT_SCREEN":     lambda ctx: 1.0,
     "CAMERA_DISABLED":  lambda ctx: 1.0,
     "MIC_DISABLED":     lambda ctx: 1.0,
 
@@ -46,7 +45,6 @@ _CONFIDENCE_SOURCE: Dict[str, Any] = {
 
     # ML rules that carry a real model confidence score
     "MOBILE_PHONE":     lambda ctx: float(ctx.get("yolo_confidence", ctx.get("confidence_score", 1.0))),
-    "OBJECT_DETECTED":  lambda ctx: float(ctx.get("yolo_confidence", ctx.get("confidence_score", 1.0))),
     "FACE_COVERED":     lambda ctx: float(ctx.get("face_detection_score", ctx.get("confidence_score", 1.0))),
 
     # lookingAway — EMA angle relative to threshold

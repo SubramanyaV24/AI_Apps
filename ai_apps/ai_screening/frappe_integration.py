@@ -50,6 +50,12 @@ def _resolve_audio_path(file_url: str) -> str | None:
     if os.path.isfile(abs_path):
         return abs_path
 
+    # Fallback: check private/files if stored with /files/ URL
+    fname = os.path.basename(path)
+    priv_path = get_site_path("private", "files", fname)
+    if os.path.isfile(priv_path):
+        return priv_path
+
     # Fallback for double extension mismatch (e.g. .mp3.mp3)
     if not abs_path.endswith(".mp3.mp3") and abs_path.endswith(".mp3"):
         fallback_path = abs_path + ".mp3"
@@ -76,6 +82,9 @@ def _build_result(candidate_result: dict) -> dict:
         "experience_assessment": candidate_result.get("experience_assessment", []),
         "professional_readiness": candidate_result.get("professional_readiness", []),
         "ai_flags":            candidate_result.get("ai_flags", []),
+        "accent":              candidate_result.get("accent") or evaluation.get("accent"),
+        "mother_tongue_influence": candidate_result.get("mother_tongue_influence") or evaluation.get("mother_tongue_influence"),
+        "mother_tongue_influence_percentage": candidate_result.get("mother_tongue_influence_percentage") or evaluation.get("mother_tongue_influence_percentage"),
         # Populated by format_output() in run_ai_screening()
         "ai_remarks":          None,
         "ai_priority":         None,
@@ -176,8 +185,98 @@ def run_ai_screening_and_save(docname: str) -> dict:
         add_tags_to_candidate(candidate, "ai_flags",
                               "ai_flags", result.get("ai_flags", []))
 
+    # Accent & Mother Tongue Influence fields
+    accent = result.get("accent") or ""
+    mti_desc = result.get("mother_tongue_influence") or ""
+    mti_pct = result.get("mother_tongue_influence_percentage") or ""
+
+    def _find_field(doc, target_type: str) -> str | None:
+        """
+        Dynamically find the appropriate fieldname on a Frappe document/meta
+        for 'accent', 'mti_desc', or 'mti_pct'. Supports custom_ prefixes and label fuzzy-matching.
+        """
+        meta = frappe.get_meta(doc.doctype)
+        name_map = {
+            "accent": [
+                "accent", "custom_accent", "speaker_accent", "custom_speaker_accent",
+                "candidate_accent", "custom_candidate_accent", "detected_accent"
+            ],
+            "mti_desc": [
+                "mother_tongue_influence", "custom_mother_tongue_influence",
+                "mother_tongue_influence_details", "custom_mother_tongue_influence_details",
+                "mother_tongue_influence_explanation", "custom_mother_tongue_influence_explanation",
+                "mti_explanation", "custom_mti_explanation",
+                "mti_details", "custom_mti_details",
+                "mti_influence", "custom_mti_influence"
+            ],
+            "mti_pct": [
+                "mother_tongue_influence_percentage", "custom_mother_tongue_influence_percentage",
+                "mother_tongue_influence_rating", "custom_mother_tongue_influence_rating",
+                "mti_percentage", "custom_mti_percentage",
+                "mother_tongue_percentage", "custom_mother_tongue_percentage",
+                "mti_rating", "custom_mti_rating",
+                "mti", "custom_mti",
+                "percentage", "custom_percentage"
+            ]
+        }
+        for c in name_map.get(target_type, []):
+            if meta.has_field(c) or hasattr(doc, c):
+                return c
+
+        # Fallback: fuzzy match by label or fieldname across meta.fields
+        for f in meta.fields:
+            fn = (f.fieldname or "").lower()
+            lbl = (f.label or "").lower()
+            if target_type == "accent":
+                if "accent" in fn or "accent" in lbl:
+                    return f.fieldname
+            elif target_type == "mti_desc":
+                if ("mother" in fn or "mother" in lbl or "influence" in fn or "influence" in lbl or "mti" in fn or "mti" in lbl):
+                    if not any(p in fn or p in lbl for p in ["percent", "%", "rating", "rate"]):
+                        return f.fieldname
+            elif target_type == "mti_pct":
+                if ("mother" in fn or "mother" in lbl or "influence" in fn or "influence" in lbl or "mti" in fn or "mti" in lbl):
+                    if any(p in fn or p in lbl for p in ["percent", "%", "rating", "rate"]):
+                        return f.fieldname
+        return None
+
+    def _assign_field(doc, target_type: str, val) -> bool:
+        if val is None or val == "":
+            return False
+        fn = _find_field(doc, target_type)
+        if fn:
+            meta = frappe.get_meta(doc.doctype)
+            df = meta.get_field(fn)
+            ft = getattr(df, "fieldtype", "") if df else ""
+            if ft in ("Percent", "Float", "Currency", "Int"):
+                try:
+                    clean_num = float(str(val).replace("%", "").strip())
+                    val = int(round(clean_num)) if ft == "Int" else clean_num
+                except (ValueError, TypeError):
+                    pass
+            setattr(doc, fn, val)
+            return True
+        return False
+
+    # Persist to Candidates doc if fields exist
+    _assign_field(candidate, "accent", accent)
+    _assign_field(candidate, "mti_desc", mti_desc)
+    _assign_field(candidate, "mti_pct", mti_pct)
+
     # Step 5: persist changes
     candidate.save(ignore_permissions=True)
+
+    # Also persist to WEB Page screening doc if fields exist there
+    saved_web = False
+    if _assign_field(web_doc, "accent", accent):
+        saved_web = True
+    if _assign_field(web_doc, "mti_desc", mti_desc):
+        saved_web = True
+    if _assign_field(web_doc, "mti_pct", mti_pct):
+        saved_web = True
+    if saved_web:
+        web_doc.save(ignore_permissions=True)
+
     frappe.db.commit()
     return result
 
@@ -252,6 +351,26 @@ def run_ai_screening(docname: str) -> dict:
     raw_atsid = getattr(doc, "atsid", None) or doc.name
     atsid = str(raw_atsid).split("-")[0] if raw_atsid else None
     
+    applied_role = None
+    if atsid and frappe.db.exists("Candidates", atsid):
+        try:
+            cand_doc = frappe.get_doc("Candidates", atsid)
+            pos = cand_doc.get("position")
+            role = cand_doc.get("applied_role")
+            if pos and role and str(pos).strip() != str(role).strip():
+                applied_role = f"{pos} ({role})"
+            else:
+                applied_role = pos or role or cand_doc.get("applied_role_data")
+        except Exception:
+            pass
+    if not applied_role:
+        pos = getattr(doc, "position", None)
+        role = getattr(doc, "applied_role", None)
+        if pos and role and str(pos).strip() != str(role).strip():
+            applied_role = f"{pos} ({role})"
+        else:
+            applied_role = pos or role
+
     if atsid:
         jd_text = fetch_jd_for_candidate(atsid)
         if jd_text:
@@ -316,14 +435,20 @@ def run_ai_screening(docname: str) -> dict:
     # ── Step 5: Format HR output (second LLM pass — minimal context only) ─────
     evaluation = raw_result.get("evaluation") or {}
     raw_reason = evaluation.get("reason") or ""
+    accent_val = result.get("accent")
+    mti_desc_val = result.get("mother_tongue_influence")
+    mti_pct_val = result.get("mother_tongue_influence_percentage")
 
-    # format_output receives ONLY: decision, final_score, confidence, reason
-    # Tags are recruiter-facing labels — they do NOT influence P1–P5 logic
+    # format_output receives: decision, final_score, confidence, reason, applied_role, accent, MTI
     formatted = format_output(
         decision=result.get("decision") or "",
         final_score=result.get("calibrated_score") or 0,
         confidence=result.get("confidence") or "low",
         reason=raw_reason,
+        applied_role=applied_role,
+        accent=accent_val,
+        mother_tongue_influence=mti_desc_val,
+        mother_tongue_influence_percentage=mti_pct_val,
     )
 
     if formatted:

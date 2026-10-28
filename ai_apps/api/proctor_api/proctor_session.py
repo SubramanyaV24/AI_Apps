@@ -77,6 +77,7 @@ def start_session(**kwargs):
                 doc.set(fieldname, payload.get(fieldname))
                 
         doc.insert(ignore_permissions=True)
+            
         return {"success": True, "session_id": doc.name}
     except Exception as exc:
         frappe.log_error(message=str(exc), title="Failed to start Proctor Session")
@@ -110,6 +111,8 @@ def update_session(session_name: str, **kwargs):
 
         # Sync metrics when session is updated
         sync_session_metrics(session_name)
+
+        # When test ends, we no longer enqueue post-test snapshot analysis.
 
         return {"success": True}
     except Exception as exc:
@@ -345,6 +348,20 @@ def get_session_details(session_id: str):
         "medium": sum(1 for e in violations if e.get("severity") == "MEDIUM"),
         "low": sum(1 for e in violations if e.get("severity") == "LOW"),
     }
+    
+    # Extract browser from SESSION_START event
+    browser_info = "Unknown"
+    for evt in events:
+        if evt.get("event_type") == "SESSION_START":
+            try:
+                import json
+                meta = json.loads(evt.get("metadata") or "{}") if isinstance(evt.get("metadata"), str) else (evt.get("metadata") or {})
+                extra = meta.get("extra") or {}
+                browser_info = extra.get("browser") or extra.get("userAgent") or meta.get("browser") or meta.get("userAgent") or "Unknown"
+            except Exception:
+                pass
+            break
+    session["browser"] = browser_info
 
     # Risk payload — full severity engine explainability
     risk_payload = None
@@ -396,13 +413,39 @@ def _guess_evidence_mime(filename, evidence_type=None):
     return "image/jpeg"
 
 
-def _stream_file_response(filename, content, mime_type):
-    """Return file bytes inline (for <img>/<audio> src), not a SharePoint redirect."""
-    frappe.response["type"] = "download"
-    frappe.response["filename"] = filename
-    frappe.response["filecontent"] = content
-    frappe.response["content_type"] = mime_type
-    frappe.response["display_content_as"] = "inline"
+def _stream_proxy_response(filename, file_resp, mime_type):
+    """Proxy a streaming response directly from Microsoft Graph to the client."""
+    from werkzeug.wrappers import Response
+    
+    # Pass through essential headers from Microsoft Graph
+    headers = {}
+    for h in ["Content-Length", "Content-Range", "Accept-Ranges", "Content-Type", "Last-Modified", "ETag"]:
+        if h in file_resp.headers:
+            headers[h] = file_resp.headers[h]
+            
+    # Fallback headers
+    if "Content-Type" not in headers:
+        headers["Content-Type"] = mime_type
+    if "Accept-Ranges" not in headers:
+        headers["Accept-Ranges"] = "bytes"
+        
+    headers["Content-Disposition"] = f'inline; filename="{filename}"'
+
+    # Generate stream
+    def generate():
+        for chunk in file_resp.iter_content(chunk_size=65536):
+            if chunk:
+                yield chunk
+
+    # Create Werkzeug Response
+    status_code = 206 if "Content-Range" in headers or "Range" in frappe.local.request.headers else 200
+
+    return Response(
+        generate(), 
+        status=status_code, 
+        headers=headers, 
+        direct_passthrough=True
+    )
 
 
 @frappe.whitelist(allow_guest=True)
@@ -468,11 +511,15 @@ def get_evidence_file(evidence_id: str):
         if not download_url:
             frappe.throw(_("Failed to retrieve direct download URL from Microsoft Graph"))
 
-        file_resp = requests.get(download_url, timeout=60)
+        # Proxy Range header if present
+        req_headers = {}
+        client_range = frappe.local.request.headers.get("Range")
+        if client_range:
+            req_headers["Range"] = client_range
+
+        # Stream directly from Graph without loading into memory
+        file_resp = requests.get(download_url, headers=req_headers, stream=True, timeout=60)
         file_resp.raise_for_status()
-        content = file_resp.content
-        if not content:
-            frappe.throw(_("Evidence file is empty"))
 
         guessed = mimetypes.guess_type(filename)[0]
         if guessed:
@@ -480,7 +527,7 @@ def get_evidence_file(evidence_id: str):
         elif file_resp.headers.get("Content-Type"):
             mime_type = file_resp.headers["Content-Type"].split(";")[0]
 
-        _stream_file_response(filename, content, mime_type)
+        return _stream_proxy_response(filename, file_resp, mime_type)
 
     except Exception:
         frappe.log_error(

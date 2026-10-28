@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+    @page {
+        size: A4;
+        margin: 15mm 12mm;
+        @bottom-right {
+            content: "Page " counter(page) " of " counter(pages);
+            font-size: 10px;
+            color: #666;
+        }
+    }
+    body {
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        color: #1a1a1a;
+        margin: 0;
+        padding: 0;
+        line-height: 1.5;
+        font-size: 12px;
+    }
+    .header-table {
+        width: 100%;
+        border-bottom: 2px solid #0056b3;
+        padding-bottom: 15px;
+        margin-bottom: 20px;
+    }
+    .header-title {
+        font-size: 24px;
+        font-weight: bold;
+        color: #0056b3;
+        margin: 0;
+        padding: 0;
+    }
+    .header-subtitle {
+        font-size: 14px;
+        color: #555;
+    }
+    .section-title {
+        font-size: 16px;
+        font-weight: bold;
+        color: #333;
+        margin-top: 25px;
+        margin-bottom: 10px;
+        border-bottom: 1px solid #ddd;
+        padding-bottom: 5px;
+    }
+    .profile-table {
+        width: 100%;
+        margin-bottom: 20px;
+        border-collapse: collapse;
+    }
+    .profile-photo {
+        width: 120px;
+        vertical-align: top;
+    }
+    .profile-photo img {
+        width: 100px;
+        height: 100px;
+        border-radius: 4px;
+        object-fit: cover;
+        border: 1px solid #ccc;
+    }
+    .profile-details {
+        vertical-align: top;
+        padding-left: 15px;
+    }
+    .profile-item {
+        margin-bottom: 6px;
+    }
+    .profile-label {
+        font-weight: bold;
+        color: #555;
+        display: inline-block;
+        width: 120px;
+    }
+    .metrics-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 25px;
+    }
+    .metric-card {
+        border: 1px solid #eee;
+        background: #f9f9f9;
+        text-align: center;
+        padding: 15px 10px;
+    }
+    .metric-value {
+        font-size: 24px;
+        font-weight: bold;
+        color: #0056b3;
+        margin-bottom: 5px;
+    }
+    .metric-label {
+        font-size: 11px;
+        color: #666;
+        text-transform: uppercase;
+    }
+    .events-table {
+        width: 100%;
+        border-spacing: 0;
+    }
+    .events-table th, .events-table td {
+        border-bottom: 1px solid #eee;
+        padding: 8px;
+        text-align: left;
+    }
+    .events-table th {
+        background-color: #f5f5f5;
+        font-weight: bold;
+        color: #333;
+    }
+    .events-table tr {
+        page-break-inside: avoid !important;
+        page-break-after: auto;
+    }
+    .events-table td, .events-table th {
+        page-break-inside: avoid !important;
+    }
+    .severity-CRITICAL { color: #dc2626; font-weight: bold; }
+    .severity-HIGH { color: #ea580c; font-weight: bold; }
+    .severity-MEDIUM, .severity-MODERATE { color: #ca8a04; font-weight: bold; }
+    .severity-LOW { color: #65a30d; }
+    .evidence-link {
+        color: #2563eb;
+        text-decoration: none;
+    }
+    .evidence-link:hover {
+        text-decoration: underline;
+    }
+    .browser-info {
+        font-size: 11px;
+        color: #666;
+        margin-top: 5px;
+    }
+</style>
+</head>
+<body>
+
+<table class="header-table">
+    <tr>
+        <td style="vertical-align: middle;">
+            <h1 class="header-title">Novel Proctor Report</h1>
+            <div class="header-subtitle">Session Analytics & Violation Overview</div>
+        </td>
+        <td style="text-align: right; vertical-align: middle;">
+            <div><strong>Date:</strong> {{ (details.session.started_at|string)[:10] if details.session.started_at else 'N/A' }}</div>
+            <div><strong>Status:</strong> {{ details.session.status }}</div>
+        </td>
+    </tr>
+</table>
+
+<h2 class="section-title">Candidate Profile</h2>
+<table class="profile-table">
+    <tr>
+        <td class="profile-photo">
+            {% if details.candidate_photo %}
+                <img src="{{ details.candidate_photo }}" alt="Candidate Photo">
+            {% else %}
+                <div style="width: 100px; height: 100px; background: #eee; border: 1px solid #ccc; text-align: center; line-height: 100px; color: #999;">No Photo</div>
+            {% endif %}
+            {% if details.candidate_photo_url %}
+                <div style="text-align: center; margin-top: 5px;">
+                    <a href="{{ details.candidate_photo_url }}" class="evidence-link" style="font-size: 11px;" target="_blank">View Evidence</a>
+                </div>
+            {% endif %}
+        </td>
+        <td class="profile-details">
+            <div class="profile-item"><span class="profile-label">Name:</span> {{ details.session.user_name }}</div>
+            <div class="profile-item"><span class="profile-label">Email:</span> {{ details.session.user_email }}</div>
+            <div class="profile-item"><span class="profile-label">Entity ID:</span> {{ details.session.entity_id or 'N/A' }}</div>
+            <div class="profile-item"><span class="profile-label">Session Duration:</span> 
+                {% if details.session.started_at and details.session.ended_at %}
+                    {{ frappe.utils.time_diff_in_seconds(details.session.ended_at, details.session.started_at) // 60 }} mins
+                {% else %}
+                    N/A
+                {% endif %}
+            </div>
+            <div class="profile-item"><span class="profile-label">Trust Score:</span> 
+                <strong>{{ (100 - (details.session.risk_value or 0)) | round(1) }}%</strong>
+            </div>
+        </td>
+    </tr>
+</table>
+
+<h2 class="section-title">System Analysis Overview</h2>
+<table class="metrics-table">
+    <tr>
+        {% for stat in details.stats[:4] %}
+        <td class="metric-card">
+            <div class="metric-value">{{ stat.count }}</div>
+            <div class="metric-label">{{ stat.label.replace('_', ' ') }}</div>
+        </td>
+        {% endfor %}
+    </tr>
+    {% if details.stats|length > 4 %}
+    <tr>
+        {% for stat in details.stats[4:8] %}
+        <td class="metric-card">
+            <div class="metric-value">{{ stat.count }}</div>
+            <div class="metric-label">{{ stat.label.replace('_', ' ') }}</div>
+        </td>
+        {% endfor %}
+    </tr>
+    {% endif %}
+</table>
+
+<h2 class="section-title">Detailed Event Log</h2>
+{% if details.logs %}
+<table class="events-table">
+    <thead>
+        <tr>
+            <th style="width: 15%">Time</th>
+            <th style="width: 25%">Violation Type</th>
+            <th style="width: 15%">Severity</th>
+            <th style="width: 30%">Details</th>
+            <th style="width: 15%">Evidence</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for log in details.logs %}
+        <tr>
+            <td>{{ log.timestamp_formatted }}</td>
+            <td><strong>{{ log.event_type.replace('_', ' ') }}</strong></td>
+            <td class="severity-{{ log.severity }}">{{ log.severity }}</td>
+            <td style="font-size: 11px; color: #555;">
+                {% if log.metadata %}
+                    {% set meta = frappe.parse_json(log.metadata) %}
+                    {% if meta.message %}{{ meta.message }}{% endif %}
+                {% endif %}
+            </td>
+            <td>
+                {% if log.image_url %}
+                    <a href="{{ log.image_url }}" class="evidence-link" target="_blank">View Evidence</a>
+                {% else %}
+                    <span style="color: #999;">-</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p style="color: #666; font-style: italic;">No violations recorded during this session.</p>
+{% endif %}
+
+</body>
+</html>

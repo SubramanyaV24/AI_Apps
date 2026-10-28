@@ -1,21 +1,28 @@
+const CRITICAL_TYPES = new Set([
+  'MULTIPLE_MONITORS',
+  'NO_VIDEO',
+  'MIC_DISABLED',
+  'CAMERA_DISABLED',
+]);
+
 const HIGH_TYPES = new Set([
-  'NO_FACE',
   'MULTIPLE_PEOPLE',
   'MULTIPLE_FACES',
   'MOBILE_PHONE',
-  'FACE_COVERED',
-  'MULTIPLE_MONITORS',
+  'TAB_SWITCHED',
+  'NO_AUDIO',
 ]);
 
 const MODERATE_TYPES = new Set([
-  'TAB_SWITCHED',
-  'GAZE_AWAY',
+  'NO_FACE',
+  'FULLSCREEN_EXITED',
+  'FULLSCREEN_EXIT',
   'AUDIO_VAD',
-  'NOISE',
 ]);
 
 export function getEventSeverity(type) {
   const t = (type || '').toUpperCase();
+  if (CRITICAL_TYPES.has(t)) return 'critical';
   if (HIGH_TYPES.has(t)) return 'high';
   if (MODERATE_TYPES.has(t)) return 'moderate';
   return 'low';
@@ -25,7 +32,7 @@ export function countEventsBySeverity(events = []) {
   const counts = { critical: 0, high: 0, moderate: 0, low: 0 };
   events.forEach((e) => {
     // Only count events that triggered a violation
-    if (!e.severity && !e.penalty_points) return;
+    if (e.isViolation === false) return;
     
     let key;
     if (e.severity) {

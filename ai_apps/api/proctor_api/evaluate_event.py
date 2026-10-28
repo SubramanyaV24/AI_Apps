@@ -69,7 +69,39 @@ def evaluate_event(**kwargs):
     if not event_type:
         raise frappe.exceptions.ValidationError(_("event_type is required"))
 
+    # Normalise legacy FULLSCREEN_EXIT → FULLSCREEN_EXITED so only one rule fires
+    # and only one DB row is written per physical fullscreen-exit event.
+    if event_type == "FULLSCREEN_EXIT":
+        event_type = "FULLSCREEN_EXITED"
+        payload["event_type"] = "FULLSCREEN_EXITED"
+
     session = _get_or_create_session(session)
+    
+    # Ignore very short Tab/Fullscreen switches (< 200ms)
+    if event_type in ("TAB_SWITCHED", "FULLSCREEN_EXITED") and "duration_ms" in payload:
+        dur = safe_numeric(payload["duration_ms"])
+        if 0 < dur < 200:
+            frappe.logger().info(f"[evaluate_event] Ignored {event_type} for session {session} due to short duration: {dur}ms")
+            return {
+                "success": True,
+                "session": session,
+                "message": f"Ignored due to short duration ({dur}ms)",
+                "violations": [],
+                "event_record": None,
+            }
+
+    # Ignore events if the session is explicitly paused (e.g., during LRT instructions)
+    session_status = frappe.db.get_value("Proctor Session", session, "status", cache=True)
+    if session_status == "PAUSED" and event_type not in ("SESSION_START", "SESSION_END"):
+        frappe.logger().info(f"[evaluate_event] Ignored {event_type} for session {session} because session is PAUSED (instructions phase).")
+        return {
+            "success": True,
+            "session": session,
+            "message": "Ignored because session is paused.",
+            "violations": [],
+            "event_record": None,
+        }
+
     # Build Event object for the rule engine
     event_payload = {}
     # copy known optional fields if present
@@ -146,8 +178,13 @@ def evaluate_event(**kwargs):
 
     if triggered_violations:
         payload["severity"] = triggered_violations[0].get("severity", "LOW")
+        payload["penalty_points"] = triggered_violations[0].get("penalty_points", 0)
         meta_dict["violations"] = triggered_violations
-        payload["metadata"] = json.dumps(meta_dict)
+        meta_dict["is_violation"] = True
+    else:
+        meta_dict["is_violation"] = False
+
+    payload["metadata"] = json.dumps(meta_dict)
 
     # Call create_event to store the row
     result = create_event(**payload)
@@ -219,13 +256,21 @@ def _run_severity_pipeline(session, engine, triggered_violations, event_type, pa
     # Resolve confidence — use the raw float from payload if provided
     raw_conf = float(event_payload.get("confidence_score") or 1.0)
     confidence = resolve_confidence(matching_rule.rule_id, raw_conf)
+    
+    # Always set the correct intrinsic severity for the UI timeline, even if it doesn't trigger a penalty
+    payload["severity"] = (matching_rule.severity_tier or "LOW").upper()
+    payload["penalty_points"] = 0
 
     def _on_violation(rule, sid, conf, ts_ms):
         """Callback fired by threshold_engine when threshold is met."""
-        process_violation(sid, rule, conf, ts_ms)
+        dur = safe_numeric(event_payload.get("duration_ms") or 0)
+        sev_payload = process_violation(sid, rule, conf, ts_ms, duration_ms=dur)
+        apply_penalty = sev_payload.get("apply_penalty", True)
+        
         triggered_violations.append({
             "rule_id": rule.rule_id,
             "severity": (rule.severity_tier or "LOW").upper(),
+            "penalty_points": rule.penalty_points if apply_penalty else 0,
             "ui_mode": "toast",
             "message": f"Violation: {rule.rule_id}",
             "requires_acknowledgement": False,

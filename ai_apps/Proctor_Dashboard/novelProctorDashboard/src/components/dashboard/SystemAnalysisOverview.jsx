@@ -1,18 +1,20 @@
 import React, { useEffect, useState } from "react"
 import { motion } from "framer-motion"
-import { Copy, UserMinus, Users, AudioLines, Monitor, AppWindow, X, Smartphone, UserX, EyeOff } from "lucide-react"
+import { Copy, UserMinus, Users, AudioLines, Monitor, X, Smartphone, UserX, EyeOff, Minimize, ClipboardPaste, MousePointerClick, ArrowRightLeft } from "lucide-react"
 import { MetricCard } from "./MetricCard"
 
 const METRICS = [
-  { key: "mobilePhone",      icon: Smartphone, label: "Mobile Phone",    violationTypes: ["MOBILE_PHONE"] },
-  { key: "tabSwitched",      icon: Copy,       label: "Tab Switches",    violationTypes: ["TAB_SWITCHED"] },
-  { key: "splitScreen",      icon: AppWindow,  label: "Split Screen",    violationTypes: ["SPLIT_SCREEN"] },
-  { key: "noFace",           icon: UserMinus,  label: "Face Missing",    violationTypes: ["NO_FACE"] },
-  { key: "multipleFaces",    icon: Users,      label: "Multiple Faces",  violationTypes: ["MULTIPLE_PEOPLE", "MULTIPLE_FACES"] },
-  { key: "faceCovered",      icon: UserX,      label: "Face Covered",    violationTypes: ["FACE_COVERED"] },
-  { key: "gazeAway",         icon: EyeOff,     label: "Looking Away",    violationTypes: ["GAZE_AWAY"] },
-  { key: "noise",            icon: AudioLines, label: "Noise Events",    violationTypes: ["AUDIO_VAD", "NOISE"] },
-  { key: "multipleMonitors", icon: Monitor,    label: "External Monitor",violationTypes: ["MULTIPLE_MONITORS"] },
+  { key: "mobilePhone",      icon: Smartphone,          label: "Mobile Phone",    violationTypes: ["MOBILE_PHONE"] },
+  { key: "tabSwitched",      icon: ArrowRightLeft,      label: "Tab Switches",    violationTypes: ["TAB_SWITCHED"] },
+  { key: "fullScreenExit",   icon: Minimize,            label: "Full Screen Exit",violationTypes: ["FULL_SCREEN_EXIT"] },
+  { key: "copyPaste",        icon: ClipboardPaste,      label: "Copy/Paste",      violationTypes: ["COPY_PASTE"] },
+  { key: "rightClick",       icon: MousePointerClick,   label: "Right-click",     violationTypes: ["RIGHT_CLICK"] },
+  { key: "noFace",           icon: UserMinus,           label: "Face Missing",    violationTypes: ["NO_FACE"] },
+  { key: "multipleFaces",    icon: Users,               label: "Multiple Faces",  violationTypes: ["MULTIPLE_PEOPLE", "MULTIPLE_FACES"] },
+  { key: "faceCovered",      icon: UserX,               label: "Face Covered",    violationTypes: ["FACE_COVERED"] },
+  { key: "gazeAway",         icon: EyeOff,              label: "Looking Away",    violationTypes: ["GAZE_AWAY"] },
+  { key: "noise",            icon: AudioLines,          label: "Noise Events",    violationTypes: ["AUDIO_VAD", "NOISE"] },
+  { key: "multipleMonitors", icon: Monitor,             label: "External Monitor",violationTypes: ["MULTIPLE_MONITORS"] },
 ]
 
 export function SystemAnalysisOverview({ counters, sessionKey, activeViolationFilter, onViolationFilter }) {

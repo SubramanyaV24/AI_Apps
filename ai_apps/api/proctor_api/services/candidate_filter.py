@@ -144,7 +144,19 @@ def filter_sessions(
     filters: list = []
 
     if risk_level_list:
-        filters.append(["risk_band", "in", risk_level_list])
+        matching_sessions = frappe.get_all(
+            "Proctor Session Event",
+            filters=[
+                ["severity", "in", risk_level_list],
+                ["event_type", "not in", ["SESSION_START", "SESSION_END"]]
+            ],
+            pluck="session",
+            distinct=True
+        )
+        if not matching_sessions:
+            filters.append(["name", "=", "___NONE___"])
+        else:
+            filters.append(["name", "in", matching_sessions])
 
     if status_list:
         filters.append(["status", "in", status_list])

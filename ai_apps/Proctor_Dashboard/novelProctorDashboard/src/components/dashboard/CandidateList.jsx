@@ -68,24 +68,17 @@ function FilterPopover({ filters, onChange, onReset, onClose }) {
           <Filter className="h-3.5 w-3.5 text-[#888]" />
           <span className="text-xs font-bold uppercase tracking-widest text-[#888]">Filter</span>
         </div>
-        <div className="flex items-center gap-2">
-          {activeCount > 0 && (
-            <button
-              type="button"
-              onClick={onReset}
-              className="text-xs font-semibold text-red-600 hover:text-red-500 transition-colors"
-            >
-              Clear
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded p-0.5 text-red-600 hover:bg-red-600/10 hover:text-red-500 transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={activeCount > 0 ? onReset : onClose}
+          className={`flex items-center justify-center transition-colors ${
+            activeCount > 0 
+              ? "text-xs font-semibold text-red-600 hover:text-red-500" 
+              : "rounded p-0.5 text-red-600 hover:bg-red-600/10 hover:text-red-500"
+          }`}
+        >
+          {activeCount > 0 ? "Clear" : <X className="h-4 w-4" />}
+        </button>
       </div>
 
       {/* Risk Level */}
@@ -256,7 +249,6 @@ export function CandidateList({
 
   const resetFilters = () => {
     setFilters(DEFAULT_FILTERS)
-    setFilterOpen(false)
   }
 
   // Generate pagination blocks
@@ -400,6 +392,7 @@ export function CandidateList({
         ) : (
           sessions.map((session) => {
             const isSelected = selectedSessionId === session.name
+            const isPending = false;
             const trust = isSelected && selectedSessionTrustScore == null
               ? null
               : (isSelected ? selectedSessionTrustScore : Math.round(100 - (session.risk_value ?? 0)))
@@ -425,12 +418,12 @@ export function CandidateList({
                   <div
                     className="shrink-0 font-mono text-[10px] inline-flex items-center rounded-full border px-2.5 py-0.5 font-semibold"
                     style={{
-                      backgroundColor: `${badgeColor}26`,
-                      color: badgeColor,
-                      borderColor: `${badgeColor}40`,
+                      backgroundColor: isPending ? '#f59e0b26' : `${badgeColor}26`,
+                      color: isPending ? '#f59e0b' : badgeColor,
+                      borderColor: isPending ? '#f59e0b40' : `${badgeColor}40`,
                     }}
                   >
-                    {trust === null ? '--' : trust}% Trust
+                    {isPending ? 'Pending' : (trust === null ? '--' : `${trust}% Trust`)}
                   </div>
                 </div>
 

@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 # Reusing LLM config
 LLM_BASE_URL = "https://oma.novelinfra.com"
 LLM_API_KEY = "sk-8TgQCpFTeZfci4fPt0oufw"
-LLM_MODEL = "gpt-oss-120b-cloud"
-FALLBACK_MODEL = "qwen3-next-80b-cloud"
+LLM_MODEL = "openai/gpt-oss:120b-cloud"
+FALLBACK_MODEL = "glm-5.2-cloud"
 MAX_RETRIES = 2
 TIMEOUT = 30
 

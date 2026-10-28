@@ -89,7 +89,7 @@ class Rule:
         New fields fall back gracefully when absent so existing DB records continue
         to work without migration.
         """
-        frappe.logger().info(f"[Rule.from_dict] Received dict: {d}")
+        # frappe.logger().info(f"[Rule.from_dict] Received dict: {d}")
 
         # --- Legacy Condition handling (backward compat) ----------------------
         if "condition" in d and isinstance(d["condition"], dict):
@@ -102,7 +102,7 @@ class Rule:
                 "count": d.get("count"),
                 "pattern_expression": d.get("pattern_expression"),
             }
-        frappe.logger().info(f"[Rule.from_dict] cond_data: {cond_data}")
+        # frappe.logger().info(f"[Rule.from_dict] cond_data: {cond_data}")
         condition = Condition(
             type=cond_data.get("type"),
             threshold=safe_numeric(cond_data.get("threshold")),
@@ -110,11 +110,11 @@ class Rule:
             count=safe_numeric(cond_data.get("count")),
             pattern_expression=cond_data.get("pattern_expression"),
         )
-        frappe.logger().info(
-            f"[Rule.from_dict] Created condition: type={condition.type}, "
-            f"threshold={condition.threshold}, window_ms={condition.window_ms}, "
-            f"count={condition.count}, pattern_expression={condition.pattern_expression}"
-        )
+        # frappe.logger().info(
+        #     f"[Rule.from_dict] Created condition: type={condition.type}, "
+        #     f"threshold={condition.threshold}, window_ms={condition.window_ms}, "
+        #     f"count={condition.count}, pattern_expression={condition.pattern_expression}"
+        # )
 
         # --- New severity engine fields (with safe defaults) ------------------
         # threshold_type: prefer new field, fall back to capitalised condition_type
@@ -439,7 +439,7 @@ class RuleEngine:
         if cond.type == "threshold":
             value = safe_numeric(event.payload.get("value"))
             threshold = safe_numeric(cond.threshold) or 0
-            frappe.logger().info(f"[RuleEngine _evaluate_condition] rule={rule.rule_id}, event_type={rule.event_type}, value={value!r} (type: {type(value)}), threshold={threshold!r} (type: {type(threshold)})")
+            # frappe.logger().info(f"[RuleEngine _evaluate_condition] rule={rule.rule_id}, event_type={rule.event_type}, value={value!r} (type: {type(value)}), threshold={threshold!r} (type: {type(threshold)})")
             if value is None:
                 return False
             # Special case: if threshold is -1, just check that value is present
@@ -519,12 +519,10 @@ class RuleEngine:
             "NO_FACE": "Please remain visible in the camera frame.",
             "GAZE_AWAY": "Please keep your eyes on the screen.",
             "MOBILE_PHONE": "Mobile phone usage detected.",
-            "OBJECT_DETECTED": "Restricted object detected in the frame.",
             "FACE_COVERED": "Your face appears to be partially covered.",
             "AUDIO_VAD": "Multiple voices or sustained background noise detected.",
             "NOISE": "Background noise detected.",
             "MULTIPLE_MONITORS": "Multiple monitors detected.",
-            "SPLIT_SCREEN": "Browser window is not properly maximized.",
             "CAMERA_DISABLED": "Webcam has been muted or disabled at the OS/hardware level.",
             "MIC_DISABLED": "Microphone has been muted or disabled at the OS/hardware level.",
             "FULLSCREEN_EXITED": "You exited fullscreen mode. Please remain in fullscreen mode during the test."
@@ -539,7 +537,7 @@ class RuleEngine:
             ui_mode = "toast"
             req_ack = False
             # Elevate specific critical rules immediately to banner
-            if rule.event_type in ["MOBILE_PHONE", "MULTIPLE_PEOPLE", "TAB_SWITCHED", "SPLIT_SCREEN", "CAMERA_DISABLED", "MIC_DISABLED", "FULLSCREEN_EXITED"]:
+            if rule.event_type in ["MOBILE_PHONE", "MULTIPLE_PEOPLE", "TAB_SWITCHED", "CAMERA_DISABLED", "MIC_DISABLED", "FULLSCREEN_EXITED"]:
                 ui_mode = "warning_banner"
         elif count <= 3:
             ui_mode = "warning_banner"

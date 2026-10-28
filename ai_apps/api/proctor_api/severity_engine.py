@@ -51,9 +51,20 @@ _CONFIDENCE_THRESHOLDS = [
     (0.40, 0.5),
 ]
 
-#: Repeat bonus per occurrence, capped at MAX_REPEAT_BONUS.
-REPEAT_BONUS_PER_COUNT = 3.0
-MAX_REPEAT_BONUS = 15.0
+#: Repeat bonus tier mapping.
+REPEAT_BONUS_BY_TIER = {
+    "CRITICAL": 50.0,
+    "HIGH": 30.0,
+    "MEDIUM": 20.0,
+    "MODERATE": 20.0,
+    "LOW": 5.0,
+}
+
+#: Rule specific total caps.
+REPEAT_BONUS_CAPS = {
+    "NOISE": 15.0,
+    "GAZE_AWAY": 30.0,
+}
 
 #: Correlation bonus per unique pair, capped at MAX_CORRELATION_BONUS.
 CORRELATION_BONUS_PER_PAIR = 8.0
@@ -113,9 +124,9 @@ def effective_severity(tier: str, confidence: float) -> Optional[float]:
         return None
     anchor_value = SEVERITY_ANCHOR_VALUE.get(tier)
     if anchor_value is None:
-        frappe.logger().warning(
-            f"[severity_engine] Unknown severity_tier={tier!r}; skipping"
-        )
+        # frappe.logger().warning(
+        #     f"[severity_engine] Unknown severity_tier={tier!r}; skipping"
+        # )
         return None
     return anchor_value * weight
 
@@ -154,9 +165,9 @@ def update_severity_anchor(
         if rule.severity:
             tier = rule.severity.title()
         else:
-            frappe.logger().debug(
-                f"[severity_engine] Rule {rule.rule_id} has no severity_tier or severity; skipping anchor update"
-            )
+            # frappe.logger().debug(
+            #     f"[severity_engine] Rule {rule.rule_id} has no severity_tier or severity; skipping anchor update"
+            # )
             return None
 
     eff = effective_severity(tier, confidence)
@@ -172,10 +183,10 @@ def update_severity_anchor(
         if eff > current_anchor:
             _set(session_id, "anchor", eff)
             _set(session_id, "anchor_rule", rule.rule_id)
-            frappe.logger().info(
-                f"[severity_engine] {session_id} anchor raised: {current_anchor:.1f} → {eff:.1f} "
-                f"(rule={rule.rule_id}, tier={rule.severity_tier}, conf={confidence:.2f})"
-            )
+            # frappe.logger().info(
+            #     f"[severity_engine] {session_id} anchor raised: {current_anchor:.1f} → {eff:.1f} "
+            #     f"(rule={rule.rule_id}, tier={rule.severity_tier}, conf={confidence:.2f})"
+            # )
 
     return eff
 
@@ -184,28 +195,35 @@ def update_severity_anchor(
 # Repeat bonus
 # ---------------------------------------------------------------------------
 
-def compute_repeat_bonus(session_id: str, rule_id: str) -> float:
-    """Increment the rule fire count and return the current repeat bonus.
-
-    Capped at :data:`MAX_REPEAT_BONUS`.
-    """
+def compute_repeat_bonus(session_id: str, rule: "Rule") -> None:
+    """Increment the rule's penalized fire count."""
     with _lock:
-        counts: Dict[str, int] = dict(_get(session_id, "rule_counts", {}))
-        counts[rule_id] = counts.get(rule_id, 0) + 1
-        _set(session_id, "rule_counts", counts)
-        count = counts[rule_id]
-
-    bonus = min(count * REPEAT_BONUS_PER_COUNT, MAX_REPEAT_BONUS)
-    return bonus
+        counts: Dict[str, int] = dict(_get(session_id, "penalized_rule_counts", {}))
+        counts[rule.rule_id] = counts.get(rule.rule_id, 0) + 1
+        _set(session_id, "penalized_rule_counts", counts)
 
 
-def get_max_repeat_bonus(session_id: str) -> float:
-    """Return the maximum repeat bonus across all rules for this session."""
-    counts: Dict[str, int] = dict(_get(session_id, "rule_counts", {}))
-    if not counts:
-        return 0.0
-    max_count = max(counts.values())
-    return min(max_count * REPEAT_BONUS_PER_COUNT, MAX_REPEAT_BONUS)
+def calculate_rule_repeat_bonus(rule_id: str, tier: str, penalized_count: int) -> float:
+    """Calculates the total repeat bonus for a single rule instance."""
+    repeats = max(0, penalized_count - 1)
+    rate = REPEAT_BONUS_BY_TIER.get(tier.upper(), 0.0)
+    uncapped_bonus = repeats * rate
+    
+    # Apply rule-specific cap if defined
+    if rule_id in REPEAT_BONUS_CAPS:
+        return min(uncapped_bonus, REPEAT_BONUS_CAPS[rule_id])
+    
+    return uncapped_bonus
+
+
+def get_total_repeat_bonus(penalized_rule_counts: Dict[str, int], rule_tier_map: Dict[str, str]) -> float:
+    """Calculates independent summation across all penalized rules."""
+    total_bonus = 0.0
+    for rule_id, count in penalized_rule_counts.items():
+        tier = rule_tier_map.get(rule_id, "LOW")
+        total_bonus += calculate_rule_repeat_bonus(rule_id, tier, count)
+        
+    return total_bonus
 
 
 # ---------------------------------------------------------------------------
@@ -314,18 +332,20 @@ def rehydrate_severity_state(session_id: str) -> None:
         else:
             ts_ms = int(time.time() * 1000)
 
-        # Parse confidence from metadata if present
+        # Parse confidence and duration from metadata if present
         confidence = 1.0
+        dur_ms = 0
         meta_str = ev.get("metadata")
         if meta_str:
             try:
                 meta = json.loads(meta_str) if isinstance(meta_str, str) else meta_str
                 confidence = float(meta.get("confidence") or meta.get("confidence_score") or 1.0)
+                dur_ms = int(meta.get("duration_ms") or 0)
             except Exception:
                 pass
 
         # Call process_violation
-        process_violation(session_id, matching_rule, confidence, ts_ms)
+        process_violation(session_id, matching_rule, confidence, ts_ms, duration_ms=dur_ms)
 
 
 # ---------------------------------------------------------------------------
@@ -353,9 +373,19 @@ def compute_risk_value(session_id: str) -> Dict[str, Any]:
 
         anchor = float(_get(session_id, "anchor", 0.0))
         anchor_rule = _get(session_id, "anchor_rule", "")
-        rep_bonus = get_max_repeat_bonus(session_id)
         corr_bonus = get_correlation_bonus(session_id)
         events = list(_get(session_id, "events", []))
+        penalized_counts = dict(_get(session_id, "penalized_rule_counts", {}))
+
+    from ai_apps.api.proctor_api.rule_engine import RuleEngine
+    engine = RuleEngine()
+    engine.load_rules()
+    rule_tier_map = {
+        r.rule_id: (r.severity_tier or r.severity or "LOW").upper()
+        for r in engine._rules
+    }
+    
+    rep_bonus = get_total_repeat_bonus(penalized_counts, rule_tier_map)
 
     risk = min(anchor + rep_bonus + corr_bonus, 100.0)
 
@@ -411,6 +441,7 @@ def process_violation(
     rule: "Rule",
     confidence: float,
     timestamp_ms: int,
+    duration_ms: int = 0,
 ) -> Dict[str, Any]:
     """Update anchor, repeat bonus, and correlation bonus for a single violation.
 
@@ -422,19 +453,42 @@ def process_violation(
     dict
         Full risk payload from :func:`compute_risk_value`.
     """
-    # 1. Update anchor
-    update_severity_anchor(session_id, rule, confidence, timestamp_ms)
+    with _lock:
+        counts = dict(_get(session_id, "rule_counts", {}))
+        is_first = (counts.get(rule.rule_id, 0) == 0)
 
-    # 2. Repeat bonus (increments internal count)
-    compute_repeat_bonus(session_id, rule.rule_id)
+    apply_penalty = True
+    if is_first:
+        if rule.rule_id in ("NOISE", "GAZE_AWAY"):
+            apply_penalty = False
+            frappe.logger().info(f"[severity_engine] First {rule.rule_id} for session {session_id} - applying NO penalty.")
+        elif rule.rule_id in ("TAB_SWITCHED", "FULLSCREEN_EXITED", "FULLSCREEN_EXIT"):
+            if duration_ms <= 3000:
+                apply_penalty = False
+                frappe.logger().info(f"[severity_engine] First {rule.rule_id} for session {session_id} (duration {duration_ms}ms <= 3000ms) - applying NO penalty.")
 
-    # 3. Correlation bonus
-    corr_window = rule.correlation_window_ms or DEFAULT_CORRELATION_WINDOW_MS
-    compute_correlation_bonus(session_id, rule.rule_id, timestamp_ms, window_ms=corr_window)
+    if apply_penalty:
+        # 1. Update anchor
+        update_severity_anchor(session_id, rule, confidence, timestamp_ms)
+
+        # 2. Repeat bonus (increments internal penalized count)
+        compute_repeat_bonus(session_id, rule)
+
+        # 3. Correlation bonus
+        corr_window = rule.correlation_window_ms or DEFAULT_CORRELATION_WINDOW_MS
+        compute_correlation_bonus(session_id, rule.rule_id, timestamp_ms, window_ms=corr_window)
+    else:
+        # Manually increment count so next occurrence applies penalty
+        with _lock:
+            counts[rule.rule_id] = counts.get(rule.rule_id, 0) + 1
+            _set(session_id, "rule_counts", counts)
+            _append_event(session_id, rule.rule_id, 0.0, confidence, timestamp_ms)
+            _set(session_id, "last_event_ms", timestamp_ms)
 
     # 4. Return full payload
-    return compute_risk_value(session_id)
-
+    payload = compute_risk_value(session_id)
+    payload["apply_penalty"] = apply_penalty
+    return payload
 
 # ---------------------------------------------------------------------------
 # Session reset
@@ -442,7 +496,7 @@ def process_violation(
 
 def reset_session(session_id: str) -> None:
     """Clear all severity engine state for a session."""
-    for suffix in ("anchor", "anchor_rule", "events", "rule_counts", "correlated_pairs", "last_event_ms"):
+    for suffix in ("anchor", "anchor_rule", "events", "rule_counts", "penalized_rule_counts", "correlated_pairs", "last_event_ms"):
         frappe.cache().delete_key(_skey(session_id, suffix))
 
 
@@ -468,7 +522,8 @@ def _append_event(
 
 
 def _log_discarded_event(session_id: str, rule_id: str, confidence: float) -> None:
-    frappe.logger().debug(
-        f"[severity_engine] {session_id}/{rule_id} discarded — "
-        f"confidence {confidence:.2f} below minimum weight threshold"
-    )
+    pass
+    # frappe.logger().debug(
+    #     f"[severity_engine] {session_id}/{rule_id} discarded — "
+    #     f"confidence {confidence:.2f} below minimum weight threshold"
+    # )

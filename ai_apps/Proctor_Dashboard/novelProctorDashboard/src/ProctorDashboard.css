@@ -174,3 +174,16 @@ input[type="date"]::-webkit-datetime-edit-year-field:focus {
   outline: none;
 }
 
+
+/* Print CSS */
+@media print {
+  body { background: #0a0a0a !important; color: white !important; }
+  .no-print { display: none !important; }
+  .dashboard-card { break-inside: avoid; box-shadow: none !important; }
+  .evidence-row { break-inside: avoid; }
+  
+  @page {
+    size: A4 portrait;
+    margin: 15mm 12mm;
+  }
+}

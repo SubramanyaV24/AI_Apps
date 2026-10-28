@@ -69,15 +69,14 @@ const ALERT_COOLDOWNS = {
 
 // Human-readable display names for each violation type
 const VIOLATION_LABELS = {
-  MOBILE_PHONE:      'Mobile Phone Detected',
-  TAB_SWITCHED:      'Tab / Window Switch',
-  MULTIPLE_PEOPLE:   'Multiple People Detected',
-  MULTIPLE_FACES:    'Multiple Faces Detected',
-  NO_FACE:           'No Face Detected',
-  GAZE_AWAY:         'Candidate Looking Away',
-  FACE_COVERED:      'Face Covered',
-  AUDIO_VAD:         'Background Noise / Voice Detected',
-  SPLIT_SCREEN:      'Split Screen Detected',
+  MOBILE_PHONE: 'Mobile Phone Detected',
+  TAB_SWITCHED: 'Tab / Window Switch',
+  MULTIPLE_PEOPLE: 'Multiple People Detected',
+  MULTIPLE_FACES: 'Multiple Faces Detected',
+  NO_FACE: 'No Face Detected',
+  GAZE_AWAY: 'Candidate Looking Away',
+  FACE_COVERED: 'Face Covered',
+  AUDIO_VAD: 'Background Noise / Voice Detected',
   MULTIPLE_MONITORS: 'Multiple Monitors Detected',
 };
 function violationLabel(type) {
@@ -112,17 +111,20 @@ export default function App() {
 
   // Dynamic metrics from API/local state
   const [trustScore, setTrustScore] = useState(null);
+  const [postTestAnalysisStatus, setPostTestAnalysisStatus] = useState(null);
   const [riskBand, setRiskBand] = useState("LOW");
   const [counters, setCounters] = useState({
     tabSwitched: 0,
-    splitScreen: 0,
     noFace: 0,
     multipleFaces: 0,
     noise: 0,
     multipleMonitors: 0,
     mobilePhone: 0,
     gazeAway: 0,
-    faceCovered: 0
+    faceCovered: 0,
+    fullScreenExit: 0,
+    copyPaste: 0,
+    rightClick: 0
   });
   const [startedAt, setStartedAt] = useState("--:--");
   const [submittedAt, setSubmittedAt] = useState(null);
@@ -130,6 +132,7 @@ export default function App() {
   const [atsId, setAtsId] = useState("");
   const [testDate, setTestDate] = useState("");
   const [activeViolationFilter, setActiveViolationFilter] = useState(null);
+  const [activeSeverityFilter, setActiveSeverityFilter] = useState("ALL");
   const [riskPayload, setRiskPayload] = useState(null);
 
   const sessionIdRef = useRef(null);
@@ -243,23 +246,27 @@ export default function App() {
     setUserEmail("");
     setQuizCode("");
     setTrustScore(null);
+    setPostTestAnalysisStatus(null);
     setRiskBand("LOW");
     setCounters({
       tabSwitched: 0,
-      splitScreen: 0,
       noFace: 0,
       multipleFaces: 0,
       noise: 0,
       multipleMonitors: 0,
       mobilePhone: 0,
       gazeAway: 0,
-      faceCovered: 0
+      faceCovered: 0,
+      fullScreenExit: 0,
+      copyPaste: 0,
+      rightClick: 0
     });
     setEvents([]);
     setSessionEndAt(null);
     setAtsId("");
     setTestDate("");
     setActiveViolationFilter(null);
+    setActiveSeverityFilter("ALL");
     setRiskPayload(null);
   }, []);
 
@@ -282,6 +289,8 @@ export default function App() {
       setUserEmail(s.user_email || "No email");
       setQuizCode(s.entity_id || "Quiz");
       setAtsId(s.entity_id || "");
+      // Post-test analysis status has been removed
+      setPostTestAnalysisStatus(null);
       if (s.creation) {
         // Format test date as "Jan 1, 2024"
         setTestDate(new Date(s.creation).toLocaleDateString(undefined, {
@@ -361,11 +370,15 @@ export default function App() {
           let evidenceUrl = null;
           let evidenceType = null;
           let metaLabel = null;
+          let isViolation = false;
           if (e.metadata) {
             try {
               const meta = JSON.parse(e.metadata);
               msg = meta.message || e.event_type;
               metaLabel = meta.label || null;
+              if (meta.is_violation || (meta.violations && meta.violations.length > 0)) {
+                isViolation = true;
+              }
               if (meta.evidence && !isSharePointUrl(meta.evidence)) {
                 const metaUrl = resolveEvidenceUrl(meta.evidence);
                 if (metaUrl) {
@@ -388,9 +401,9 @@ export default function App() {
             evidenceType = linked.evidenceType || evidenceType;
           } else if (!evidenceUrl && orphanEvidence.length > 0) {
             const vt = (e.event_type || '').toUpperCase();
-            // Browser-only events (tab switch, split screen) never trigger the camera,
+            // Browser-only events (tab switch) never trigger the camera,
             // so they must never receive a screenshot from the orphan pool.
-            const BROWSER_ONLY_EVENTS = new Set(['TAB_SWITCHED', 'SPLIT_SCREEN']);
+            const BROWSER_ONLY_EVENTS = new Set(['TAB_SWITCHED']);
             if (!BROWSER_ONLY_EVENTS.has(vt)) {
               const eventTime = new Date(e.occurred_at || e.creation).getTime();
               let bestIdx = -1;
@@ -434,25 +447,37 @@ export default function App() {
             evidenceType,
             severity: e.severity,
             penalty_points: e.penalty_points,
+            isViolation,
           };
         });
       setEvents(formattedEvents);
 
       const newCounters = {
         tabSwitched: 0,
-        splitScreen: 0,
         noFace: 0,
         multipleFaces: 0,
         noise: 0,
         multipleMonitors: 0,
         mobilePhone: 0,
         gazeAway: 0,
-        faceCovered: 0
+        faceCovered: 0,
+        fullScreenExit: 0,
+        copyPaste: 0,
+        rightClick: 0
       };
       rawEvents.forEach(e => {
+        // Only increment top-level metrics for actual violations
+        let isViolation = false;
+        if (e.metadata) {
+          try {
+            const meta = JSON.parse(e.metadata);
+            if (meta.is_violation || (meta.violations && meta.violations.length > 0)) isViolation = true;
+          } catch (_) { }
+        }
+        if (!isViolation) return;
+
         const type = e.event_type;
         if (type === 'TAB_SWITCHED') newCounters.tabSwitched++;
-        else if (type === 'SPLIT_SCREEN') newCounters.splitScreen++;
         else if (type === 'NO_FACE') newCounters.noFace++;
         else if (type === 'MULTIPLE_PEOPLE' || type === 'MULTIPLE_FACES') newCounters.multipleFaces++;
         else if (type === 'AUDIO_VAD' || type === 'NOISE') newCounters.noise++;
@@ -460,6 +485,9 @@ export default function App() {
         else if (type === 'MOBILE_PHONE') newCounters.mobilePhone++;
         else if (type === 'GAZE_AWAY') newCounters.gazeAway++;
         else if (type === 'FACE_COVERED') newCounters.faceCovered++;
+        else if (type === 'FULL_SCREEN_EXIT') newCounters.fullScreenExit++;
+        else if (type === 'COPY_PASTE') newCounters.copyPaste++;
+        else if (type === 'RIGHT_CLICK') newCounters.rightClick++;
       });
       setCounters(newCounters);
 
@@ -486,16 +514,19 @@ export default function App() {
     setEvents([]);
     setCounters({
       tabSwitched: 0,
-      splitScreen: 0,
       noFace: 0,
       multipleFaces: 0,
       noise: 0,
       multipleMonitors: 0,
       mobilePhone: 0,
       gazeAway: 0,
-      faceCovered: 0
+      faceCovered: 0,
+      fullScreenExit: 0,
+      copyPaste: 0,
+      rightClick: 0
     });
     setTrustScore(null);
+    setPostTestAnalysisStatus(null);
     setRiskBand("LOW");
     setRiskPayload(null);
 
@@ -531,9 +562,10 @@ export default function App() {
     return () => clearInterval(interval);
   }, [selectedSessionId, sessionActive, pollSessionDetails]);
 
-  // Reset violation filter when session changes
+  // Reset filters when session changes
   useEffect(() => {
     setActiveViolationFilter(null);
+    setActiveSeverityFilter("ALL");
   }, [selectedSessionId]);
 
   const startMonitoring = () => {
@@ -677,7 +709,15 @@ export default function App() {
             testDate={testDate}
           />
 
-          <SummaryMetricsRow trustScore={trustScore} severityCounts={severityCounts} riskPayload={riskPayload} />
+          <SummaryMetricsRow
+            trustScore={trustScore}
+            severityCounts={severityCounts}
+            riskPayload={riskPayload}
+            events={events}
+            activeSeverityFilter={activeSeverityFilter}
+            onSeverityFilter={setActiveSeverityFilter}
+            postTestAnalysisStatus={postTestAnalysisStatus}
+          />
 
           <div className="grid min-h-0 flex-1 shrink-0 grid-cols-1 gap-4 lg:grid-cols-[1fr_340px]">
             <div className="flex min-h-0 flex-col max-lg:max-h-[min(50vh,26rem)] lg:h-[600px]">
@@ -685,7 +725,11 @@ export default function App() {
                 events={events}
                 sessionKey={selectedSessionId}
                 violationFilter={activeViolationFilter}
-                onClearFilter={() => setActiveViolationFilter(null)}
+                onClearFilter={() => {
+                  setActiveViolationFilter(null)
+                  setActiveSeverityFilter('ALL')
+                }}
+                severityFilter={activeSeverityFilter}
               />
             </div>
             <div className="min-h-0 overflow-hidden lg:h-[600px]">
@@ -700,7 +744,7 @@ export default function App() {
         </section>
       </main>
 
-      
+
     </div>
   );
 }

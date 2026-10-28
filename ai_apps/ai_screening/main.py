@@ -18,6 +18,10 @@ from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
+_pipeline_dir = os.path.dirname(os.path.abspath(__file__))
+if _pipeline_dir not in sys.path:
+    sys.path.insert(0, _pipeline_dir)
+
 from audio_pipeline import process_audio, extract_speech_features
 from transcription import transcribe_audio
 from utils import clean_transcript, transcript_quality_score
@@ -130,6 +134,9 @@ def process_single_candidate(audio_path: str, jd_text: str = None, resume_summar
         "evaluation_confidence": None,
         "calibrated_score": None,
         "calibrated_decision": None,
+        "accent": None,
+        "mother_tongue_influence": None,
+        "mother_tongue_influence_percentage": None,
         "error": None,
     }
 
@@ -178,6 +185,9 @@ def process_single_candidate(audio_path: str, jd_text: str = None, resume_summar
 
         result["evaluation"] = evaluation
         result["evaluation_confidence"] = evaluation.get("evaluation_confidence")
+        result["accent"] = evaluation.get("accent")
+        result["mother_tongue_influence"] = evaluation.get("mother_tongue_influence")
+        result["mother_tongue_influence_percentage"] = evaluation.get("mother_tongue_influence_percentage")
         result["status"] = "completed"
 
         # Step 6 — Calibration
